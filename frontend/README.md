@@ -12,21 +12,40 @@ elsewhere with `VITE_DEV_API`.
 
 ## A note on this repo's path
 
-The repo sits under a directory containing  (). npm hands scripts
-to , which reads  as a command separator, so it splits npm's PATH
-mid-path and every Unknown command: "run"
+This repo lives under a directory whose name contains an ampersand — `TF&TE`.
 
-To see a list of supported npm commands, run:
-  npm help fails with:
+npm prepends `node_modules/.bin` to `PATH` and hands the result to `cmd.exe`,
+which reads `&` as a command separator. It splits the path mid-way, so every
+`npm run` fails with a message that looks unrelated to the real cause:
 
-    'TErontend
-ode_modules.bin' is not recognized...
+```
+'TE\frontend\node_modules\.bin\' is not recognized as an internal or
+external command, operable program or batch file.
+```
 
- works around it by running scripts through Git Bash. That path is
-machine-specific; CI runs on Linux and ignores the file.
+`.npmrc` in this directory works around it by running scripts through Git Bash,
+which does not split on `&`.
 
-The durable fix is renaming the directory to drop the . Only the Python
-venv needs rebuilding afterwards — it bakes absolute paths into its shims.
+Two caveats:
+
+- The bash path in `.npmrc` is specific to this machine (Git is installed under
+  `C:\Users\initi\Git`, not `C:\Program Files\Git`). A teammate will need to
+  change it.
+- CI runs on Linux and ignores the file entirely.
+
+**The durable fix is renaming the directory** so the `&` is gone. That removes a
+whole class of failure rather than patching one tool — `npx` and anything else
+that shells out hits the same wall. Afterwards only the Python virtualenv needs
+rebuilding, because it bakes absolute paths into its shims; git, Docker and
+`node_modules` all survive a move.
+
+```bash
+mv "TF&TE" "TF-TE"          # from the parent directory, with servers stopped
+cd TF-TE
+rm -rf backend/.venv && python -m venv backend/.venv
+backend/.venv/Scripts/python.exe -m pip install -r backend/requirements/dev.txt
+rm frontend/.npmrc          # no longer needed
+```
 
 ## Scripts
 
