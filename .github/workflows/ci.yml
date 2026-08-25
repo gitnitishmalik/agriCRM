@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 🔴 Doc 02 §6 rule 7: the smoke suite runs on EVERY migration. It takes under
+  # a second and catches trigger regressions that unit tests miss. This job is
+  # required for merge — it is not advisory.
+  # ---------------------------------------------------------------------------
+  schema:
+    name: Schema + smoke test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: agricrm
+          POSTGRES_USER: agricrm
+          POSTGRES_PASSWORD: agricrm_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agricrm -d agricrm"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply schema
+        env:
+          PGPASSWORD: agricrm_ci
+        run: |
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
+               -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
+               -f agri-crm-docs/sql/schema.sql
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
+               -f agri-crm-docs/sql/seed_reference.sql
+
+      - name: Smoke test (15 assertions)
+        env:
+          PGPASSWORD: agricrm_ci
+        run: |
+          set -o pipefail
+          OUT=$(psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
+                     -f agri-crm-docs/sql/smoke_test.sql 2>&1)
+          echo "$OUT"
+          PASSES=$(printf '%s\n' "$OUT" | grep -c 'PASS' || true)
+          if [ "$PASSES" -ne 15 ]; then
+            echo "::error::Expected 15 assertions, saw $PASSES"
+            exit 1
+          fi
+          echo "Smoke test green — $PASSES/15"
+
+  lint:
+    name: Lint + format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff==0.16.4
+      - run: ruff check backend/
+      - run: ruff format --check backend/
+
+  compliance:
+    name: Compliance guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 🔴 R6 — campaigns must read comm.v_messageable_farmer, never core.farmer
+      - name: "R6: messageable-view enforcement"
+        run: bash scripts/check-r6.sh
+
+      # 🔴 Doc 12 §6 — a secret in git history has to be rotated, and the
+      # rotation is always discovered late.
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    needs: [schema]
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: agricrm
+          POSTGRES_USER: agricrm
+          POSTGRES_PASSWORD: agricrm_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agricrm -d agricrm"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+
+    env:
+      DATABASE_URL: postgres://agricrm:agricrm_ci@localhost:5432/agricrm
+      REDIS_URL: redis://localhost:6379/0
+      DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - run: pip install -r backend/requirements/dev.txt
+
+      # Doc 03 §10: `--check` catches a model change shipped without a migration
+      - name: Missing migrations check
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Tests
+        working-directory: backend
+        run: pytest -q --cov --cov-report=term-missing
+
+      # 🔴 Doc 03 §10: >=80% on the two apps where a bug becomes a legal
+      # problem. Enforced per-package, because a high global average can hide
+      # an untested consent path.
+      - name: Coverage gate — communications & dataquality
+        working-directory: backend
+        run: |
+          coverage report --include='apps/communications/*' --fail-under=80
+          coverage report --include='apps/dataquality/*' --fail-under=80

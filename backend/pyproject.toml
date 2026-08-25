@@ -1,0 +1,90 @@
+[project]
+name = "agricrm-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format (Doc 03 §10)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle / pyflakes
+    "I",             # import sorting
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "DJ",            # flake8-django
+    "S",             # bandit — security
+    "T20",           # no print() in application code
+    "RUF",
+]
+ignore = [
+    "S101",   # assert is fine in tests
+    "E501",   # line length is handled by the formatter
+    # RUF012 wants ClassVar on every mutable class attribute. Django models
+    # (Meta.indexes) and DRF views (permission_classes, authentication_classes)
+    # use plain lists as their documented API; annotating them all adds noise
+    # without catching a real bug.
+    "RUF012",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]            # hardcoded test credentials
+"config/settings/*" = ["F403", "F405"]  # star-import is the settings idiom
+# 0.0.0.0 in dev ALLOWED_HOSTS is deliberate — the app runs in a container and
+# is reached from the host. Production reads ALLOWED_HOSTS from the environment.
+"config/settings/dev.py" = ["S104"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["django.db.models.Q"]
+
+# ---------------------------------------------------------------------------
+# mypy — strict on new modules (Doc 03 §10)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+warn_unused_configs = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = "apps.communications.*"
+disallow_untyped_defs = true
+strict_optional = true
+
+[[tool.mypy.overrides]]
+module = "apps.dataquality.*"
+disallow_untyped_defs = true
+strict_optional = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.dev"
+python_files = ["test_*.py", "*_test.py"]
+addopts = "--strict-markers --disable-warnings"
+testpaths = ["tests", "apps"]
+markers = [
+    "compliance: asserts a rule from Doc 05 §5 (R1-R13). Never skip these.",
+]
+
+[tool.coverage.run]
+source = ["apps", "collectors"]
+omit = ["*/migrations/*", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# 🔴 Doc 03 §10: >=80% on communications and dataquality — the two places
+# where a bug becomes a legal problem. Enforced per-package in CI.
+fail_under = 0

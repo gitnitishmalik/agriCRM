@@ -1,0 +1,43 @@
+name: agricrm
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: agricrm-db
+    environment:
+      POSTGRES_DB: agricrm
+      POSTGRES_USER: agricrm
+      POSTGRES_PASSWORD: agricrm_dev_only
+      # Deterministic collation so trigram similarity scores are reproducible
+      # across machines. Do not change without re-tuning dedupe thresholds.
+      POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+    ports:
+      # 5432 is commonly taken by a local PostgreSQL install; 5433 avoids
+      # colliding with it. The container still listens on 5432 internally.
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # 00-extensions runs before the schema; numbering controls order.
+      - ./infra/docker/initdb:/docker-entrypoint-initdb.d:ro
+      - ./agri-crm-docs/sql:/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agricrm -d agricrm"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    shm_size: 256mb
+
+  redis:
+    image: redis:7-alpine
+    container_name: agricrm-redis
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db_data:

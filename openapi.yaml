@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: AgriCRM API
+  version: 1.0.0
+  description: Farmer, FPO & Sugar Mill CRM for Theta Analytics
+paths:
+  /api/v1/auth/login/:
+    post:
+      operationId: auth_login_create
+      description: Returns a token pair plus the user's role, territory and MFA state.
+      summary: Log in
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Login'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Login'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Login'
+          description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: Blacklist the refresh token. Access tokens expire on their own
+        in 15m.
+      summary: Log out
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '205':
+          description: Refresh token blacklisted
+  /api/v1/auth/me/:
+    get:
+      operationId: auth_me_retrieve
+      description: Current user, role, permissions and territory.
+      summary: Current user
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/v1/auth/mfa/enrol/:
+    post:
+      operationId: auth_mfa_enrol_create
+      description: Create an unconfirmed TOTP device and return its provisioning URI.
+      summary: Begin MFA enrolment
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MFAEnrolResponse'
+          description: ''
+  /api/v1/auth/mfa/verify/:
+    post:
+      operationId: auth_mfa_verify_create
+      description: |-
+        Verify a TOTP code and re-issue a token pair with mfa_satisfied=true.
+
+        The re-issue matters: without it the client keeps a token whose claim says
+        MFA is outstanding, and every protected call keeps failing.
+      summary: Verify MFA code
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAVerify'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MFAVerify'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MFAVerify'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+          description: ''
+        '400':
+          description: Invalid or expired code
+  /api/v1/auth/password/change/:
+    post:
+      operationId: auth_password_change_create
+      description: Change password and revoke every outstanding session (Doc 12 §13).
+      summary: Change password
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: Changed; all sessions revoked
+  /api/v1/auth/refresh/:
+    post:
+      operationId: auth_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/healthz/:
+    get:
+      operationId: healthz_retrieve
+      description: Unauthenticated liveness probe for the ALB.
+      summary: Liveness probe
+      tags:
+      - ops
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+components:
+  schemas:
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    Login:
+      type: object
+      description: "Issues the token pair and reports whether MFA still has to be
+        satisfied.\n\n\U0001F534 Doc 12 §1: MFA is mandatory for data_ops, campaign_manager,
+        compliance\nand admin. The token is issued either way, but `mfa_satisfied:
+        false` means\nthe client must complete /auth/mfa/verify/ before the token
+        is accepted by\nany protected endpoint — enforced by IsMFAVerified, not by
+        client goodwill."
+      properties:
+        email:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - password
+    LogoutRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+      required:
+      - refresh
+    MFAEnrolResponse:
+      type: object
+      properties:
+        provisioning_uri:
+          type: string
+          description: otpauth:// URI. Render as a QR code; never log it.
+      required:
+      - provisioning_uri
+    MFAVerify:
+      type: object
+      properties:
+        token:
+          type: string
+          maxLength: 8
+          minLength: 6
+      required:
+      - token
+    PasswordChange:
+      type: object
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+        new_password:
+          type: string
+          writeOnly: true
+      required:
+      - current_password
+      - new_password
+    RoleEnum:
+      enum:
+      - field_agent
+      - bd_manager
+      - project_manager
+      - campaign_manager
+      - data_ops
+      - leadership
+      - compliance
+      - admin
+      type: string
+      description: |-
+        * `field_agent` - Field / BD Agent
+        * `bd_manager` - BD Manager
+        * `project_manager` - Project Manager
+        * `campaign_manager` - Campaign Manager
+        * `data_ops` - Data Ops Analyst
+        * `leadership` - Leadership
+        * `compliance` - Compliance Officer
+        * `admin` - System Admin
+    TokenPair:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    User:
+      type: object
+      description: '`GET /auth/me/` — identity, role, permissions and territory.'
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+          description: |-
+            Primary role. Drives RLS scoping and the MFA requirement.
+
+            * `field_agent` - Field / BD Agent
+            * `bd_manager` - BD Manager
+            * `project_manager` - Project Manager
+            * `campaign_manager` - Campaign Manager
+            * `data_ops` - Data Ops Analyst
+            * `leadership` - Leadership
+            * `compliance` - Compliance Officer
+            * `admin` - System Admin
+        district_ids:
+          type: array
+          items:
+            type: integer
+            maximum: 2147483647
+            minimum: -2147483648
+          readOnly: true
+          description: LGD district codes this user may access.
+        is_cross_territory:
+          type: boolean
+          readOnly: true
+        mfa_enforced:
+          type: boolean
+          readOnly: true
+          description: Set automatically for roles in MFA_REQUIRED_ROLES.
+        permissions:
+          type: array
+          items:
+            type: string
+          readOnly: true
+      required:
+      - district_ids
+      - email
+      - full_name
+      - id
+      - is_cross_territory
+      - mfa_enforced
+      - permissions
+      - role
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
