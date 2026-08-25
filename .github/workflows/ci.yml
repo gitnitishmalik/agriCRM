@@ -142,3 +142,30 @@ jobs:
         run: |
           coverage report --include='apps/communications/*' --fail-under=80
           coverage report --include='apps/dataquality/*' --fail-under=80
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # Doc 03 §10: contract drift fails the build. If the committed
+      # openapi.yaml no longer matches the generated types, the frontend is
+      # compiling against an API that does not exist any more.
+      - name: API types match the committed schema
+        run: |
+          npm run api:types
+          git diff --exit-code src/api/schema.d.ts             || { echo "::error::src/api/schema.d.ts is stale. Run 'npm run api:types' and commit."; exit 1; }
+
+      - run: npm run typecheck
+      - run: npm run build

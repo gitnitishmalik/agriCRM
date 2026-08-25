@@ -1,0 +1,43 @@
+# Render blueprint — staging only.
+#
+# 🔴 Synthetic data only. Render has no India region, and Doc 03 §7 requires
+# personal data to stay in ap-south-1. See DEPLOYMENT.md.
+#
+# The database is deliberately NOT a Render Postgres: the free tier there is
+# deleted after 90 days and cannot be placed in India. Point DATABASE_URL at
+# Neon or Supabase in ap-south-1 instead.
+
+services:
+  - type: web
+    name: agricrm-api
+    runtime: python
+    plan: free
+    region: singapore # closest Render offers to India; still not ap-south-1
+    rootDir: backend
+    buildCommand: >-
+      pip install -r requirements/base.txt &&
+      python manage.py collectstatic --noinput &&
+      python manage.py migrate --noinput
+    startCommand: >-
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:$PORT
+      --workers 2
+      --threads 4
+      --timeout 60
+      --access-logfile -
+    healthCheckPath: /api/v1/healthz/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.render
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false # set to the Neon/Supabase ap-south-1 connection string
+      - key: REDIS_URL
+        sync: false # optional; Celery runs eagerly without it on free tier
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false # https://<your-project>.vercel.app
+      - key: SENTRY_DSN
+        sync: false

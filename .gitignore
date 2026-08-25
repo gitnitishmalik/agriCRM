@@ -44,3 +44,6 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Frontend build output
+frontend/dist/

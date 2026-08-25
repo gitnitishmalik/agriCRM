@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Mirrored for the few places SVG needs a raw value rather than a class. */
+    --surface: #ffffff;
+    --canvas: #fafafb;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-base text-ink antialiased;
+    /* Tabular figures everywhere by default. This is a system full of codes,
+       areas, capacities and counts; proportional digits make columns wobble. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One focus treatment across the app, and it is never a tier colour — a
+     focus ring must never be mistaken for a data-quality signal. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-focus ring-offset-1 ring-offset-canvas;
+  }
+
+  ::selection {
+    background: #dbe4fb;
+  }
+
+  /* Devanagari runs (name_local) get the matching Plex face automatically. */
+  :lang(hi),
+  [data-script='deva'] {
+    @apply font-deva;
+  }
+}
+
+@layer components {
+  .label {
+    @apply text-xs font-medium uppercase tracking-wide text-ink-3;
+  }
+
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-card;
+  }
+
+  .input {
+    @apply w-full rounded-card border border-line bg-surface px-3 py-2 text-base text-ink
+           placeholder:text-ink-3 focus:border-line-strong;
+  }
+
+  /* Primary action is ink, not a brand colour — colour is reserved for data. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-card px-3.5 py-2 text-base
+           font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-ink text-white hover:bg-ink-2;
+  }
+
+  .btn-quiet {
+    @apply btn border border-line bg-surface text-ink hover:bg-sunken;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -26,6 +26,9 @@ repos:
       - id: detect-private-key
       - id: check-yaml
       - id: check-json
+        # TypeScript's tsconfig files are JSONC — comments are valid there and
+        # the compiler expects them. This hook only understands strict JSON.
+        exclude: ^frontend/tsconfig.*\.json$
 
   # Local guard for R6 — see scripts/check-r6.sh
   - repo: local
