@@ -73,13 +73,30 @@ export function MfaPage() {
           </button>
 
           {enrol.data && (
-            <div className="mt-3 rounded-card border border-line bg-sunken p-3">
-              <div className="label mb-1.5">Add this to your authenticator</div>
-              <code className="block break-all font-mono text-xs text-ink-2">
-                {enrol.data.provisioning_uri}
-              </code>
+            <div className="mt-4 rounded-card border border-line bg-surface p-4">
+              <div className="label mb-2">1. Scan this with your authenticator</div>
+
+              {/* The SVG comes from our own backend, built by the qrcode
+                  library from a URI we generated — not from user input. */}
+              <div
+                className="mx-auto w-40 [&>svg]:h-full [&>svg]:w-full"
+                aria-label="QR code for authenticator enrolment"
+                dangerouslySetInnerHTML={{ __html: enrol.data.qr_svg }}
+              />
+
+              <div className="mt-4 border-t border-line pt-3">
+                <div className="label mb-1.5">Or enter this key by hand</div>
+                <code className="block break-all rounded-chip bg-sunken px-2 py-1.5 font-mono text-sm text-ink">
+                  {enrol.data.secret}
+                </code>
+              </div>
+
+              <p className="mt-3 text-sm text-ink-2">
+                2. Enter the six-digit code it shows in the box above.
+              </p>
               <p className="mt-2 text-xs text-ink-3">
-                Then enter the six-digit code it shows.
+                Google Authenticator, Microsoft Authenticator, Authy, 1Password and
+                Bitwarden all work.
               </p>
             </div>
           )}

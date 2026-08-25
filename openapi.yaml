@@ -76,7 +76,12 @@ paths:
   /api/v1/auth/mfa/enrol/:
     post:
       operationId: auth_mfa_enrol_create
-      description: Create an unconfirmed TOTP device and return its provisioning URI.
+      description: |-
+        Begin TOTP enrolment.
+
+        The device is created unconfirmed and stays that way until the user proves
+        they can read a code off it, which /mfa/verify/ handles. Returns a QR code
+        to scan and the raw secret for anyone entering it by hand.
       summary: Begin MFA enrolment
       tags:
       - auth
@@ -227,9 +232,21 @@ components:
       properties:
         provisioning_uri:
           type: string
-          description: otpauth:// URI. Render as a QR code; never log it.
+          description: otpauth:// URI. Contains the shared secret — never log it.
+        qr_svg:
+          type: string
+          description: Inline SVG QR code for the URI above.
+        secret:
+          type: string
+          description: Base32 secret, for manual entry.
+        already_confirmed:
+          type: boolean
+          description: True if this device was already enrolled and confirmed.
       required:
+      - already_confirmed
       - provisioning_uri
+      - qr_svg
+      - secret
     MFAVerify:
       type: object
       properties:

@@ -75,7 +75,11 @@ export interface paths {
         put?: never;
         /**
          * Begin MFA enrolment
-         * @description Create an unconfirmed TOTP device and return its provisioning URI.
+         * @description Begin TOTP enrolment.
+         *
+         *     The device is created unconfirmed and stays that way until the user proves
+         *     they can read a code off it, which /mfa/verify/ handles. Returns a QR code
+         *     to scan and the raw secret for anyone entering it by hand.
          */
         post: operations["auth_mfa_enrol_create"];
         delete?: never;
@@ -190,8 +194,14 @@ export interface components {
             refresh: string;
         };
         MFAEnrolResponse: {
-            /** @description otpauth:// URI. Render as a QR code; never log it. */
+            /** @description otpauth:// URI. Contains the shared secret — never log it. */
             provisioning_uri: string;
+            /** @description Inline SVG QR code for the URI above. */
+            qr_svg: string;
+            /** @description Base32 secret, for manual entry. */
+            secret: string;
+            /** @description True if this device was already enrolled and confirmed. */
+            already_confirmed: boolean;
         };
         MFAVerify: {
             token: string;

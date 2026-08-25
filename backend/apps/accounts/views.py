@@ -77,8 +77,22 @@ class MFAVerifyView(APIView):
         serializer.is_valid(raise_exception=True)
         code = serializer.validated_data["token"]
 
-        for device in devices_for_user(request.user, confirmed=True):
-            if device.verify_token(code):
+        # Confirmed devices first — that is the everyday sign-in path.
+        #
+        # Then unconfirmed ones, which is how enrolment completes: /mfa/enrol/
+        # creates the device unconfirmed, and proving you can read a code off
+        # it is exactly what confirms the authenticator holds the right secret.
+        # Checking only confirmed devices makes enrolment impossible to finish,
+        # because nothing else ever flips the flag.
+        for confirmed in (True, False):
+            for device in devices_for_user(request.user, confirmed=confirmed):
+                if not device.verify_token(code):
+                    continue
+
+                if not device.confirmed:
+                    device.confirmed = True
+                    device.save(update_fields=["confirmed"])
+
                 refresh = RefreshToken.for_user(request.user)
                 refresh["role"] = request.user.role
                 refresh["mfa_required"] = True
@@ -99,7 +113,13 @@ class MFAVerifyView(APIView):
 
 
 class MFAEnrolView(APIView):
-    """Create an unconfirmed TOTP device and return its provisioning URI."""
+    """
+    Begin TOTP enrolment.
+
+    The device is created unconfirmed and stays that way until the user proves
+    they can read a code off it, which /mfa/verify/ handles. Returns a QR code
+    to scan and the raw secret for anyone entering it by hand.
+    """
 
     @extend_schema(
         summary="Begin MFA enrolment",
@@ -111,7 +131,37 @@ class MFAEnrolView(APIView):
         device, _ = TOTPDevice.objects.get_or_create(
             user=request.user, name="default", defaults={"confirmed": False}
         )
-        return Response({"provisioning_uri": device.config_url})
+
+        return Response(
+            {
+                "provisioning_uri": device.config_url,
+                "qr_svg": _qr_svg(device.config_url),
+                # Authenticator apps accept a typed secret when a camera is not
+                # available — a desktop password manager, or a locked-down phone.
+                "secret": _secret_from_uri(device.config_url),
+                "already_confirmed": device.confirmed,
+            }
+        )
+
+
+def _qr_svg(data: str) -> str:
+    """Inline SVG QR code. SVG rather than PNG so it stays crisp and small."""
+    import io
+
+    import qrcode
+    import qrcode.image.svg
+
+    img = qrcode.make(data, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
+    buffer = io.BytesIO()
+    img.save(buffer)
+    return buffer.getvalue().decode("utf-8")
+
+
+def _secret_from_uri(uri: str) -> str:
+    """Pull the base32 secret out of an otpauth:// URI for manual entry."""
+    from urllib.parse import parse_qs, urlparse
+
+    return parse_qs(urlparse(uri).query).get("secret", [""])[0]
 
 
 class LogoutView(APIView):

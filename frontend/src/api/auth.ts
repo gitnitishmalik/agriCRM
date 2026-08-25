@@ -60,10 +60,19 @@ export function useVerifyMfa() {
   })
 }
 
+export interface MfaEnrolResponse {
+  provisioning_uri: string
+  /** Inline SVG. Rendered rather than shown as text — nobody types a URI. */
+  qr_svg: string
+  /** Base32, for entering by hand when there is no camera. */
+  secret: string
+  already_confirmed: boolean
+}
+
 export function useEnrolMfa() {
   return useMutation({
     mutationFn: () =>
-      api<{ provisioning_uri: string }>('/api/v1/auth/mfa/enrol/', { method: 'POST' }),
+      api<MfaEnrolResponse>('/api/v1/auth/mfa/enrol/', { method: 'POST' }),
   })
 }
 

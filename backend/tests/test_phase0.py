@@ -276,3 +276,91 @@ def test_every_endpoint_is_documented():
         if not op.get("summary") and not op.get("description")
     ]
     assert not undocumented, f"missing summary/description: {undocumented}"
+
+
+# ---------------------------------------------------------------------------
+# MFA enrolment (Doc 12 §1)
+# ---------------------------------------------------------------------------
+
+
+def _current_code(device) -> str:
+    """The code an authenticator app would be showing right now."""
+    import time
+
+    from django_otp.oath import TOTP
+
+    totp = TOTP(device.bin_key, device.step, device.t0, device.digits, device.drift)
+    totp.time = time.time()
+    return str(totp.token()).zfill(device.digits)
+
+
+def test_enrol_returns_qr_and_secret(client, data_ops):
+    """Pasting a raw otpauth:// URI into a phone is miserable; offer both."""
+    client.force_authenticate(user=data_ops)
+    body = client.post(reverse("mfa-enrol")).json()
+
+    assert body["provisioning_uri"].startswith("otpauth://totp/")
+    assert body["secret"], "manual-entry secret missing"
+    assert "<svg" in body["qr_svg"]
+    assert body["already_confirmed"] is False
+
+
+@pytest.mark.compliance
+def test_enrolment_completes_on_first_valid_code(client, data_ops):
+    """
+    🔴 Regression: enrolment created an unconfirmed device while verification
+    only searched confirmed ones, so nothing ever flipped the flag and MFA
+    could never be completed. Every code was rejected as invalid.
+
+    Proving you can read a code off the device is exactly what confirms the
+    authenticator holds the right secret, so a first valid code must confirm it.
+    """
+    from django_otp.plugins.otp_totp.models import TOTPDevice
+
+    client.force_authenticate(user=data_ops)
+    client.post(reverse("mfa-enrol"))
+
+    device = TOTPDevice.objects.get(user=data_ops)
+    assert device.confirmed is False, "enrolment should start unconfirmed"
+
+    response = client.post(reverse("mfa-verify"), {"token": _current_code(device)}, format="json")
+    assert response.status_code == 200, response.json()
+    assert "access" in response.json()
+
+    device.refresh_from_db()
+    assert device.confirmed is True, "a valid code must confirm the device"
+
+
+@pytest.mark.compliance
+def test_verified_token_carries_mfa_satisfied(client, data_ops):
+    """
+    The re-issued token must say MFA is satisfied, or the client keeps a token
+    whose claim still says otherwise and every protected call keeps failing.
+    """
+    import base64
+    import json as _json
+
+    from django_otp.plugins.otp_totp.models import TOTPDevice
+
+    client.force_authenticate(user=data_ops)
+    client.post(reverse("mfa-enrol"))
+    device = TOTPDevice.objects.get(user=data_ops)
+
+    body = client.post(
+        reverse("mfa-verify"), {"token": _current_code(device)}, format="json"
+    ).json()
+
+    payload = body["access"].split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    claims = _json.loads(base64.urlsafe_b64decode(payload))
+
+    assert claims["mfa_satisfied"] is True
+    assert claims["mfa_required"] is True
+
+
+def test_wrong_code_is_rejected(client, data_ops):
+    client.force_authenticate(user=data_ops)
+    client.post(reverse("mfa-enrol"))
+
+    response = client.post(reverse("mfa-verify"), {"token": "000000"}, format="json")
+    assert response.status_code == 400

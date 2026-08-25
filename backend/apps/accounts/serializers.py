@@ -96,7 +96,12 @@ class TokenPairSerializer(serializers.Serializer):
 
 class MFAEnrolResponseSerializer(serializers.Serializer):
     provisioning_uri = serializers.CharField(
-        help_text="otpauth:// URI. Render as a QR code; never log it."
+        help_text="otpauth:// URI. Contains the shared secret — never log it."
+    )
+    qr_svg = serializers.CharField(help_text="Inline SVG QR code for the URI above.")
+    secret = serializers.CharField(help_text="Base32 secret, for manual entry.")
+    already_confirmed = serializers.BooleanField(
+        help_text="True if this device was already enrolled and confirmed."
     )
 
 
