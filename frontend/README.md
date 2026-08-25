@@ -10,6 +10,24 @@ npm run dev      # http://localhost:5173, proxies /api to :8000
 Run the backend first (`make run` from the repo root), or point the proxy
 elsewhere with `VITE_DEV_API`.
 
+## A note on this repo's path
+
+The repo sits under a directory containing  (). npm hands scripts
+to , which reads  as a command separator, so it splits npm's PATH
+mid-path and every Unknown command: "run"
+
+To see a list of supported npm commands, run:
+  npm help fails with:
+
+    'TErontend
+ode_modules.bin' is not recognized...
+
+ works around it by running scripts through Git Bash. That path is
+machine-specific; CI runs on Linux and ignores the file.
+
+The durable fix is renaming the directory to drop the . Only the Python
+venv needs rebuilding afterwards — it bakes absolute paths into its shims.
+
 ## Scripts
 
 | | |
