@@ -24,17 +24,40 @@ A farmer is simultaneously a **supplier to a mill**, a **member of an FPO**, a *
 
 ## Current state
 
-🔴 **Specification only. No application code exists yet.**
+**Phase 0 (Foundation) complete.** Phase 1 (Organisation Registry) is next.
 
 | Path | Status |
 |---|---|
 | `agri-crm-docs/*.md` | 16 documents, complete |
-| `agri-crm-docs/sql/schema.sql` | Runnable. Validated against PostgreSQL 16.13. |
-| `agri-crm-docs/sql/seed_reference.sql` | States, partitions, approved-source whitelist, crops |
-| `agri-crm-docs/sql/smoke_test.sql` | 15 behavioural assertions. Must stay green. |
-| `backend/` `frontend/` `mobile/` `infra/` | **Do not exist.** Layout is specified in Doc 03 §9. |
+| `agri-crm-docs/sql/schema.sql` | Applied and running locally on PostgreSQL 16 + PostGIS |
+| `agri-crm-docs/sql/smoke_test.sql` | 15/15 green. Wired into CI and `make smoke`. |
+| `backend/` | Django 5.2 + DRF. 12 app packages, only `accounts` implemented. |
+| `infra/docker/` | Local Postgres + Redis. **Ports 5433 / 6380**, not the defaults. |
+| `infra/terraform/` | Scaffolded and documented, **not applied** — needs AWS credentials |
+| `.github/workflows/ci.yml` | 4 jobs: schema, lint, compliance, test |
+| `frontend/` `mobile/` | Do not exist. Phase 2 and Phase 6. |
 
-**Current phase:** Pre-Phase 0. See `agri-crm-docs/15-execution-plan.md`.
+**What works right now:** `make bootstrap` → `make run` gives you Django Admin,
+Swagger UI, and a working JWT + TOTP auth flow. 28 tests pass.
+
+### Phase 0 decisions worth knowing
+
+- **Django 5.2 LTS, not the 5.0 named in Doc 03** — 5.0 does not support Python 3.13.
+- **Postgres on 5433, Redis on 6380.** A local PostgreSQL install commonly holds
+  5432 and silently wins the connection, producing a confusing auth failure.
+- **The business schema is owned by `sql/schema.sql`, not by Django models.**
+  Django manages only its own tables (auth, sessions, celery beat). The
+  `ref`/`core`/`comm`/`crm`/`dq`/`audit` schemas are applied by DDL and get
+  `managed = False` models in Phase 1. The DDL carries partitioning, generated
+  columns and triggers the ORM cannot express — and those *are* the compliance
+  controls.
+- **`apps/accounts.User` is defined in full already.** `AUTH_USER_MODEL` cannot
+  be swapped after the first migration, so `role` and `district_ids` exist now
+  even though RLS itself lands in Phase 3.
+- **`openapi.yaml` is committed.** Regenerate with `make schema-doc`; a diff in
+  review is how contract drift becomes visible.
+
+**Current phase:** Phase 1. See `agri-crm-docs/15-execution-plan.md`.
 
 ---
 
