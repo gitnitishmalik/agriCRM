@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <!-- The decay curve: 0.5 ^ (t / half-life). The same function the freshness
        meter draws, at the smallest scale the app has. -->
-  <rect width="32" height="32" rx="6" fill="#14181F"/>
+  <rect width="32" height="32" rx="6" fill="#1B3A24"/>
   <path d="M5 7 C 12 7, 15 16, 18 21 C 21 25, 24 25.6, 27 25.8"
-        fill="none" stroke="#14654A" stroke-width="2.75" stroke-linecap="round"/>
-  <circle cx="18" cy="21" r="2.75" fill="#FAFAFB"/>
+        fill="none" stroke="#A7BCA6" stroke-width="2.75" stroke-linecap="round"/>
+  <circle cx="18" cy="21" r="2.75" fill="#EDF2EA"/>
 </svg>

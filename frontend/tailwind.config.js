@@ -1,46 +1,86 @@
 /**
- * AgriCRM design tokens.
+ * AgriCRM design tokens — agricultural farming theme.
  *
- * The governing rule: colour means data quality and nothing else.
+ * Three colour families, each with exactly one job. If you are adding a
+ * colour and it does not belong to one of these three, it does not belong.
  *
- * All chrome — surfaces, borders, text, buttons — is neutral. The only
- * saturated colours in this application are the four quality tiers from
- * Doc 07 §2. Most CRMs use colour as decoration and as status at the same
- * time, so status stops being legible. Here, if something is coloured, it is
- * telling you how much to trust the data.
+ *   1. BRAND GREEN — chrome and identity. The rail, primary actions, links,
+ *      active states, the mark. This is the crop: growing, cultivated, alive.
+ *      It never encodes data. A green thing on screen is a thing you can
+ *      click, not a thing you can trust.
+ *
+ *   2. WARM EARTH NEUTRALS — every surface, border and letter of text. Soil,
+ *      husk and unbleached paper rather than the blue-grey admin tooling
+ *      defaults to. Green against grey looks like a tech product with a green
+ *      logo; green against warm earth looks like farming.
+ *
+ *   3. QUALITY TIERS — status, and nothing else. Four inks from Doc 07 §2,
+ *      used only on tier chips, meters and tier-keyed strokes.
+ *
+ * On the tier re-key: Gold used to be a deep green (#14654A) back when the
+ * chrome was neutral and green was free. It is not free any more — a green
+ * primary button and a green Gold chip on the same screen would teach staff
+ * that green means two different things, and status would stop being legible.
+ * So Gold moved to actual gold and Bronze to terracotta. The tiers are now
+ * literally their metals, which is what a reader assumes on first sight
+ * anyway, and green belongs unambiguously to the interface.
+ *
+ * Silver stays near-neutral graphite on purpose. Silver means "no
+ * verification signal from us", and a desaturated colour says that more
+ * honestly than a blue would. Quarantine stays red for the obvious reason.
  *
  * Light theme only, committed to deliberately rather than hedged with a dark
  * variant. Data-ops staff read grids for whole shifts; one well-tuned surface
- * beats two adequate ones.
+ * beats two adequate ones. The rail is the single dark region, which is what
+ * gives the theme its weight without darkening the reading surface.
  */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // -- Neutral chrome ------------------------------------------------
-        canvas: '#FAFAFB', // the page itself
+        // -- 1. Brand green: chrome and identity, never data ---------------
+        brand: {
+          DEFAULT: '#2F6B3C', // primary buttons, links, active accents
+          hover: '#25562F', // pressed / hover on primary
+          soft: '#E9F1E6', // subtle wash, selected rows, quiet green fills
+          line: '#C2D6BC', // borders on green-tinted surfaces
+        },
+
+        // The rail is the one dark region in the application. Its own scale,
+        // because text on deep green needs values that have nothing to do
+        // with the ink scale used on paper.
+        rail: {
+          DEFAULT: '#1B3A24', // rail background — turned field
+          raised: '#24482E', // hover
+          line: '#2F5638', // dividers inside the rail
+          ink: '#EDF2EA', // primary text on rail (11:1)
+          'ink-2': '#A7BCA6', // secondary text on rail (6.2:1)
+        },
+
+        // -- 2. Warm earth neutrals: every surface and every letter --------
+        canvas: '#FAF8F4', // the page itself — unbleached paper
         surface: '#FFFFFF', // cards, rows, raised things
-        sunken: '#F2F3F6', // table headers, wells, inset areas
-        line: '#E3E6EC', // default border
-        'line-strong': '#C7CCD6', // emphasis border, dividers that matter
+        sunken: '#F2EFE8', // table headers, wells, inset areas — husk
+        line: '#E4DFD4', // default border
+        'line-strong': '#C9C2B2', // emphasis border, dividers that matter
 
-        ink: '#14181F', // primary text, primary buttons
-        'ink-2': '#545C6B', // secondary text, labels
-        'ink-3': '#868E9E', // captions, placeholders, disabled
+        ink: '#1C1A15', // primary text — soil black
+        'ink-2': '#5C574B', // secondary text, labels
+        'ink-3': '#837C6B', // captions, placeholders, disabled
 
-        // -- Quality tiers: the ONLY saturated colour in the app -----------
-        // Note silver is near-neutral graphite on purpose. Silver means "no
-        // verification signal from us", and a desaturated colour says that
-        // more honestly than a blue would.
-        gold: { DEFAULT: '#14654A', soft: '#E4F1EB', line: '#B4D8CA' },
+        // -- 3. Quality tiers: status only --------------------------------
+        // Contrast of each ink on its own soft fill, checked: gold 5.4:1,
+        // silver 7.1:1, bronze 5.8:1, quarantine 6.9:1. All clear AA at the
+        // small uppercase size the chips actually render at.
+        gold: { DEFAULT: '#7E5E00', soft: '#FBF1D8', line: '#E8D49A' },
         silver: { DEFAULT: '#4A5464', soft: '#EDEFF3', line: '#CDD3DD' },
-        bronze: { DEFAULT: '#8E5A14', soft: '#F7EDDB', line: '#E3CB9C' },
+        bronze: { DEFAULT: '#8E4420', soft: '#F7E7DC', line: '#E5C3AB' },
         quarantine: { DEFAULT: '#85292E', soft: '#F8E8E8', line: '#E4BCBD' },
 
         // -- System affordance, not data ----------------------------------
-        // Used for focus rings and text selection only. Deliberately a blue
-        // no tier uses, so a focus ring can never be read as a quality signal.
+        // Focus stays blue. It is now the only blue in the application, so a
+        // focus ring cannot be read as brand green or as any tier.
         focus: '#1D4ED8',
       },
 
@@ -72,8 +112,8 @@ export default {
 
       boxShadow: {
         // Restrained. Elevation is a border in this system, not a glow.
-        card: '0 1px 2px rgba(20, 24, 31, 0.04)',
-        pop: '0 4px 16px rgba(20, 24, 31, 0.10), 0 0 0 1px rgba(20, 24, 31, 0.06)',
+        card: '0 1px 2px rgba(28, 26, 21, 0.04)',
+        pop: '0 4px 16px rgba(28, 26, 21, 0.10), 0 0 0 1px rgba(28, 26, 21, 0.06)',
       },
 
       keyframes: {

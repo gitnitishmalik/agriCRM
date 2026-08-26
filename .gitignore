@@ -47,3 +47,4 @@ Thumbs.db
 
 # Frontend build output
 frontend/dist/
+.gstack/

@@ -67,7 +67,7 @@ export function MfaPage() {
           <button
             type="button"
             onClick={() => enrol.mutate()}
-            className="mt-1.5 text-sm text-ink underline decoration-line underline-offset-2 hover:decoration-ink"
+            className="link mt-1.5 text-sm"
           >
             Set up an authenticator app
           </button>

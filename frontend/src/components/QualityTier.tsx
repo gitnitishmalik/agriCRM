@@ -1,9 +1,10 @@
 /**
  * Quality tier chip and its colour mapping.
  *
- * These four are the only saturated colours in the application. Everything
- * else is neutral, so a coloured thing on screen always means the same thing:
- * here is how much to trust this data.
+ * These four inks appear on tier chips, freshness meters and tier-keyed
+ * strokes, and nowhere else. The brand green next to them is chrome — it says
+ * "you can act on this" — so the only thing a tier colour ever says is how
+ * much to trust the data it sits on.
  */
 
 import { TIER_META, type Tier } from '../lib/quality'

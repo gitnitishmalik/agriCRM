@@ -5,6 +5,10 @@
  * does — quietly, on the left, with the decay curve as an ambient mark. The
  * curve is the same function the freshness meter draws; using it here as
  * atmosphere and there as instrumentation is the one motif this app repeats.
+ *
+ * The left half is the field green of the rail, so the first thing anyone
+ * sees of this system is the thing it is about. The right half is paper,
+ * because the half you have to act on should come forward.
  */
 
 import { type FormEvent, useState } from 'react'
@@ -32,30 +36,30 @@ export function LoginPage() {
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       {/* Left: what this is. Hidden on small screens — an agent signing in on
           a phone in a village wants the form, not the thesis. */}
-      <section className="relative hidden flex-col justify-between overflow-hidden border-r border-line bg-surface p-12 lg:flex">
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-rail p-12 lg:flex">
         <div>
-          <div className="text-xl font-semibold tracking-tight text-ink">AgriCRM</div>
-          <div className="text-2xs uppercase tracking-wide text-ink-3">Theta Analytics</div>
+          <div className="text-xl font-semibold tracking-tight text-rail-ink">AgriCRM</div>
+          <div className="text-2xs uppercase tracking-wide text-rail-ink-2">Theta Analytics</div>
         </div>
 
         <div className="relative z-10 max-w-md">
-          <h1 className="text-3xl font-semibold leading-tight text-ink">
+          <h1 className="text-3xl font-semibold leading-tight text-rail-ink">
             Every record can answer&nbsp;one question: how do you know?
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-ink-2">
+          <p className="mt-4 text-lg leading-relaxed text-rail-ink-2">
             Farmers, FPOs, cooperative societies and sugar mills — with the source, the
             verification date and the confidence behind every field.
           </p>
 
-          <dl className="mt-8 grid grid-cols-3 gap-6 border-t border-line pt-6">
+          <dl className="mt-8 grid grid-cols-3 gap-6 border-t border-rail-line pt-6">
             {[
               ['Provenance', 'Where it came from'],
               ['Verification', 'Who confirmed it'],
               ['Freshness', 'Whether it still holds'],
             ].map(([term, gloss]) => (
               <div key={term}>
-                <dt className="label">{term}</dt>
-                <dd className="mt-1 text-sm text-ink-2">{gloss}</dd>
+                <dt className="label text-rail-ink-2">{term}</dt>
+                <dd className="mt-1 text-sm text-rail-ink-2">{gloss}</dd>
               </div>
             ))}
           </dl>
@@ -64,8 +68,9 @@ export function LoginPage() {
         <DecayBackdrop />
       </section>
 
-      {/* Right: the form. */}
-      <section className="flex items-center justify-center p-6">
+      {/* Right: the form. Paper against the field, so the side you have to
+          act on is the one that comes forward. */}
+      <section className="flex items-center justify-center bg-surface p-6">
         <div className="w-full max-w-sm">
           <h2 className="text-2xl font-semibold text-ink">Sign in</h2>
           <p className="mt-1.5 text-base text-ink-2">Use your Theta Analytics account.</p>
@@ -140,7 +145,10 @@ function DecayBackdrop() {
     <svg
       aria-hidden
       viewBox={`0 0 ${W} ${H}`}
-      className="pointer-events-none absolute -bottom-16 -right-24 h-[420px] w-[720px] text-ink"
+      // Anchored left and oversized so the point where the four curves start
+      // sits off-canvas. Inside the panel it read as a scratch origin rather
+      // than as four lines that share a beginning.
+      className="pointer-events-none absolute -bottom-20 -left-28 h-[540px] w-[1000px] text-rail-ink"
       preserveAspectRatio="none"
     >
       {classes.map((fieldClass, index) => {
@@ -157,7 +165,9 @@ function DecayBackdrop() {
             fill="none"
             stroke="currentColor"
             strokeWidth={1.25}
-            opacity={0.05 + index * 0.022}
+            // Lighter ink on a dark ground needs more of itself to register
+            // at the same weight it had on paper.
+            opacity={0.08 + index * 0.03}
           />
         )
       })}

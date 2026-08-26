@@ -21,7 +21,7 @@ export function DesignSystemPage() {
       <PageHeader
         eyebrow="Reference"
         title="Design system"
-        description="One rule governs the palette: colour means data quality and nothing else. Chrome is neutral, so anything coloured is telling you how much to trust what you are reading."
+        description="Three colour families, each with exactly one job. Green is chrome and identity — the things you can do. The four tier inks are status — how much to trust what you are reading. Everything between them is warm earth neutral. No colour does two jobs."
       />
 
       <div className="max-w-5xl space-y-10 p-6">
@@ -180,42 +180,111 @@ export function DesignSystemPage() {
           </div>
         </Section>
 
-        {/* -- Palette --------------------------------------------------- */}
-        <Section title="Palette" note="Four saturated colours. Everything else is neutral.">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="card p-5">
-              <div className="label mb-3">Data quality — the only colour</div>
-              <div className="space-y-2">
-                {TIERS.map((tier) => (
-                  <div key={tier} className="flex items-center gap-3">
-                    <span className={`h-6 w-6 rounded-chip bg-${tier}`} />
-                    <span className="text-sm capitalize text-ink">{tier}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="card p-5">
-              <div className="label mb-3">Chrome — neutral throughout</div>
-              <div className="space-y-2">
-                {[
-                  ['canvas', 'bg-canvas'],
-                  ['surface', 'bg-surface'],
-                  ['sunken', 'bg-sunken'],
-                  ['line', 'bg-line'],
-                  ['ink-3', 'bg-ink-3'],
-                  ['ink', 'bg-ink'],
-                ].map(([name, cls]) => (
-                  <div key={name} className="flex items-center gap-3">
-                    <span className={`h-6 w-6 rounded-chip border border-line ${cls}`} />
-                    <span className="font-mono text-sm text-ink-2">{name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* -- Actions --------------------------------------------------- */}
+        <Section
+          title="Actions"
+          note="Green carries every affordance. Nothing green in this application is ever reporting a fact about data."
+        >
+          <div className="card flex flex-wrap items-center gap-4 p-5">
+            <button type="button" className="btn-primary">
+              Save organisation
+            </button>
+            <button type="button" className="btn-quiet">
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" disabled>
+              Committing import
+            </button>
+            <a className="link text-base" href="#actions" onClick={(e) => e.preventDefault()}>
+              An inline link
+            </a>
           </div>
+        </Section>
+
+        {/* -- Palette --------------------------------------------------- */}
+        <Section
+          title="Palette"
+          note="Three families, three jobs. If a colour you are adding does not belong to one of them, it does not belong."
+        >
+          <div className="grid gap-3 lg:grid-cols-3">
+            <Swatches
+              title="Green — chrome and identity"
+              gloss="The rail, primary buttons, links, the mark. This is the crop: growing, cultivated, alive. It never encodes data — a green thing is a thing you can click, not a thing you can trust."
+              swatches={[
+                ['brand', 'bg-brand'],
+                ['brand-hover', 'bg-brand-hover'],
+                ['brand-soft', 'bg-brand-soft'],
+                ['rail', 'bg-rail'],
+                ['rail-raised', 'bg-rail-raised'],
+                ['rail-ink', 'bg-rail-ink'],
+              ]}
+            />
+            <Swatches
+              title="Warm earth — every surface and letter"
+              gloss="Soil, husk and unbleached paper rather than the blue-grey admin tooling defaults to. Green against grey looks like a tech product with a green logo; green against warm earth looks like farming."
+              swatches={[
+                ['canvas', 'bg-canvas'],
+                ['surface', 'bg-surface'],
+                ['sunken', 'bg-sunken'],
+                ['line', 'bg-line'],
+                ['ink-3', 'bg-ink-3'],
+                ['ink', 'bg-ink'],
+              ]}
+            />
+            <Swatches
+              title="Tiers — status, and nothing else"
+              gloss="Gold is gold and Bronze is terracotta because the chrome took the green. The tiers are now literally their metals, which is what a reader assumes on first sight anyway."
+              swatches={[
+                ['gold', 'bg-gold'],
+                ['gold-soft', 'bg-gold-soft'],
+                ['silver', 'bg-silver'],
+                ['bronze', 'bg-bronze'],
+                ['quarantine', 'bg-quarantine'],
+                ['focus', 'bg-focus'],
+              ]}
+            />
+          </div>
+
+          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-ink-2">
+            Gold was a deep green (<code className="font-mono text-ink-3">#14654A</code>) while
+            the chrome was neutral and green was free. It is not free now — a green primary
+            button and a green Gold chip on one screen would teach staff that green means two
+            things, and status would stop being legible. Focus stays blue, and it is the only
+            blue left, so a focus ring can never be misread as brand or as a tier.
+          </p>
         </Section>
       </div>
     </>
+  )
+}
+
+/**
+ * Palette column. The class strings are written out rather than built from
+ * the token name — Tailwind reads source text, and `bg-${name}` compiles to
+ * a swatch with no background at all.
+ */
+function Swatches({
+  title,
+  gloss,
+  swatches,
+}: {
+  title: string
+  gloss: string
+  swatches: [string, string][]
+}) {
+  return (
+    <div className="card p-5">
+      <div className="label mb-2">{title}</div>
+      <p className="mb-3.5 text-sm leading-relaxed text-ink-2">{gloss}</p>
+      <div className="space-y-2">
+        {swatches.map(([name, cls]) => (
+          <div key={name} className="flex items-center gap-3">
+            <span className={`h-6 w-6 shrink-0 rounded-chip border border-line ${cls}`} />
+            <span className="font-mono text-sm text-ink-2">{name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

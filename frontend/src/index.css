@@ -6,7 +6,12 @@
   :root {
     /* Mirrored for the few places SVG needs a raw value rather than a class. */
     --surface: #ffffff;
-    --canvas: #fafafb;
+    --canvas: #faf8f4;
+    --sunken: #f2efe8;
+    /* The green family, for the SVG marks that cannot take a class. */
+    --brand: #2f6b3c;
+    --rail: #1b3a24;
+    --rail-ink: #edf2ea;
   }
 
   html {
@@ -26,8 +31,10 @@
     @apply outline-none ring-2 ring-focus ring-offset-1 ring-offset-canvas;
   }
 
+  /* Selection is a wash of the brand green rather than the browser blue —
+     the last piece of default chrome that read as another product's colour. */
   ::selection {
-    background: #dbe4fb;
+    background: #d8e7d2;
   }
 
   /* Devanagari runs (name_local) get the matching Plex face automatically. */
@@ -51,18 +58,26 @@
            placeholder:text-ink-3 focus:border-line-strong;
   }
 
-  /* Primary action is ink, not a brand colour — colour is reserved for data. */
+  /* Green is the colour of things you can do; tier colours are the colour of
+     things you can trust. A primary button is therefore brand green, and a
+     button is never gold, silver, bronze or quarantine red. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-card px-3.5 py-2 text-base
            font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply btn bg-ink text-white hover:bg-ink-2;
+    @apply btn bg-brand text-white hover:bg-brand-hover;
   }
 
   .btn-quiet {
     @apply btn border border-line bg-surface text-ink hover:bg-sunken;
+  }
+
+  /* An inline link makes the same promise as a button: you can act on this. */
+  .link {
+    @apply text-brand underline decoration-brand-line underline-offset-2
+           transition-colors hover:decoration-brand;
   }
 }
 
