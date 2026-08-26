@@ -24,21 +24,30 @@ A farmer is simultaneously a **supplier to a mill**, a **member of an FPO**, a *
 
 ## Current state
 
-**Phase 0 (Foundation) complete.** Phase 1 (Organisation Registry) is next.
+**Phase 0 (Foundation) complete.** Phase 1 (Organisation Registry) is in progress —
+sprints 1–2 done, sprints 3–6 outstanding.
 
 | Path | Status |
 |---|---|
 | `agri-crm-docs/*.md` | 16 documents, complete |
 | `agri-crm-docs/sql/schema.sql` | Applied and running locally on PostgreSQL 16 + PostGIS |
 | `agri-crm-docs/sql/smoke_test.sql` | 15/15 green. Wired into CI and `make smoke`. |
-| `backend/` | Django 5.2 + DRF. 12 app packages, only `accounts` implemented. |
+| `backend/` | Django 5.2 + DRF. 12 app packages; `accounts`, `geography`, `organisations`, `dataquality` implemented. |
 | `infra/docker/` | Local Postgres + Redis. **Ports 5433 / 6380**, not the defaults. |
 | `infra/terraform/` | Scaffolded and documented, **not applied** — needs AWS credentials |
 | `.github/workflows/ci.yml` | 4 jobs: schema, lint, compliance, test |
-| `frontend/` `mobile/` | Do not exist. Phase 2 and Phase 6. |
+| `frontend/` | React 19 + Vite shell: auth, MFA, design system, honest not-built-yet routes. |
+| `mobile/` | Does not exist. Phase 6. |
 
 **What works right now:** `make bootstrap` → `make run` gives you Django Admin,
-Swagger UI, and a working JWT + TOTP auth flow. 28 tests pass.
+Swagger UI, a working JWT + TOTP auth flow, and the organisation registry —
+FPO / mill / society records with type profiles, geography lookups, duplicate
+blocking on create, and the source register. 75 tests pass.
+
+**Phase 1 remaining:** LGD geography load (~660k villages), `person` /
+`person_org_role` / `contact_point` (sprint 3), bulk import with the
+legal-basis gate (sprint 4), collectors (sprints 5–6), and the exit gate's
+real-data volume: 20,000+ FPOs and 500+ mills.
 
 ### Phase 0 decisions worth knowing
 
@@ -54,8 +63,37 @@ Swagger UI, and a working JWT + TOTP auth flow. 28 tests pass.
 - **`apps/accounts.User` is defined in full already.** `AUTH_USER_MODEL` cannot
   be swapped after the first migration, so `role` and `district_ids` exist now
   even though RLS itself lands in Phase 3.
+- **🔴 `User.public_id`, not `User.pk`, crosses into the business schema.** The
+  DDL types every user reference (`owner_user_id`, `created_by`, `changed_by`,
+  `crm.agent.user_id`, …) as `uuid` and carries no FK back to `accounts_user`,
+  so the business schema never depends on Django's auth tables. The integer PK
+  stays for django-otp, axes, the token blacklist and the admin log. Anything
+  writing into `core`/`comm`/`crm`/`dq`/`audit` uses `public_id`.
 - **`openapi.yaml` is committed.** Regenerate with `make schema-doc`; a diff in
   review is how contract drift becomes visible.
+
+### Phase 1 decisions worth knowing
+
+- **`config.db.schema_table()` is how a model reaches a non-public schema.**
+  Django has no `db_schema` option; the trick is closing and reopening the
+  quoting inside `db_table`. It lives in one place so it cannot be got subtly
+  wrong somewhere ungreppable.
+- **`backend/conftest.py` applies the real `schema.sql` to the test database.**
+  Nothing else keeps `managed = False` models honest — a renamed column is a
+  runtime error no migration check catches. Tests write through every model and
+  read back, and one deliberately trips a DDL `CHECK` the ORM cannot express.
+- **Duplicate blocking is a scorer, not a trigram threshold.**
+  `apps/organisations/dedupe.py` strips legal-form suffixes, then compares
+  token sets with a Dice coefficient and fuzzy token equality. Trigram is only
+  an index-backed prefilter. Scoped to a district, because a national name
+  match is noise. The admin form, the create endpoint's 409 and
+  `check-duplicates` all call it, so they cannot drift apart.
+- **Unknown query filters are a 400, not a shrug.** A typo'd filter that
+  silently does nothing is how someone exports the whole registry believing
+  they exported one district.
+- **Lists that would scan a huge table refuse instead.** `ref.village` reaches
+  ~660k rows; both the admin changelist and `/villages/` require a district,
+  block or pincode first.
 
 **Current phase:** Phase 1. See `agri-crm-docs/15-execution-plan.md`.
 
