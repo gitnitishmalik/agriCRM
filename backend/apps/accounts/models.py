@@ -13,6 +13,8 @@ makes an application bug unable to leak another region's data, and it reads
 
 from __future__ import annotations
 
+import uuid
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
@@ -59,6 +61,17 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    # The identity this user carries into the DDL-owned schemas.
+    #
+    # `sql/schema.sql` types every user reference — owner_user_id, created_by,
+    # updated_by, changed_by, actor_user_id, crm.agent.user_id — as `uuid`,
+    # and carries no foreign key back to accounts_user: the business schema
+    # must not depend on Django's auth tables. The integer primary key stays
+    # because django-otp, axes, the token blacklist and the admin log all
+    # point at it; `public_id` is what crosses the boundary. Anything writing
+    # into core/comm/crm/dq/audit uses this, never `pk`.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=200)
     phone_e164 = models.CharField(max_length=16, blank=True)

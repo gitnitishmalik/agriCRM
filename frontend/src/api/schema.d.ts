@@ -151,6 +151,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/blocks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List blocks / tehsils, optionally within one district */
+        get: operations["blocks_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blocks/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one block by id */
+        get: operations["blocks_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crops/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List crops */
+        get: operations["crops_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crops/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one crop by id */
+        get: operations["crops_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/districts/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List districts, optionally within one state */
+        get: operations["districts_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/districts/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one district by id */
+        get: operations["districts_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/healthz/": {
         parameters: {
             query?: never;
@@ -171,13 +273,246 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List organisations
+         * @description Soft-deleted rows are excluded unless `include_deleted=true`. An unsupported filter is a 400 rather than a silently ignored parameter.
+         */
+        get: operations["organisations_list"];
+        put?: never;
+        /**
+         * Create an organisation
+         * @description Returns **409** with candidate matches when the name looks like an organisation already in the registry for that district. Pass `?force=true` to create anyway — the override is recorded on the row.
+         */
+        post: operations["organisations_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch one organisation
+         * @description Includes the profile implied by the type discriminator. Resolves soft-deleted rows too, so a stored id never turns into a 404 that looks like the id was wrong.
+         */
+        get: operations["organisations_retrieve"];
+        /** Replace an organisation */
+        put: operations["organisations_update"];
+        post?: never;
+        /**
+         * Soft delete an organisation
+         * @description Sets `is_deleted`; the row and its id continue to resolve.
+         */
+        delete: operations["organisations_destroy"];
+        options?: never;
+        head?: never;
+        /** Update part of an organisation */
+        patch: operations["organisations_partial_update"];
+        trace?: never;
+    };
+    "/api/v1/organisations/bulk-assign/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassign the owner of many organisations */
+        post: operations["organisations_bulk_assign_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/check-duplicates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a name for likely duplicates
+         * @description Live duplicate check for a create form. Same scorer the create endpoint and the admin use, so a client can show the warning before the user has filled in the rest of the record.
+         */
+        post: operations["organisations_check_duplicates_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/states/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List states and union territories */
+        get: operations["states_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/states/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one state by id */
+        get: operations["states_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/villages/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List villages within a district, block or pincode
+         * @description 🔴 Requires `district`, `block` or `pincode`. `ref.village` holds roughly 660,000 rows; an unscoped list of it is a sequential scan answering a question nobody asked.
+         */
+        get: operations["villages_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/villages/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one village by id */
+        get: operations["villages_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {unknown} */
+        BlankEnum: "";
+        Block: {
+            readonly id: number;
+            lgd_code?: number | null;
+            name: string;
+            name_local?: string | null;
+            district: number;
+            readonly district_name: string;
+        };
+        BulkAssign: {
+            ids: string[];
+            /** Format: uuid */
+            owner_user_id: string | null;
+        };
+        Crop: {
+            readonly id: number;
+            code: string;
+            name: string;
+            name_local?: string | null;
+            /** @description cereal, pulse, oilseed, cash, horticulture, fodder */
+            category?: string | null;
+            default_season?: (components["schemas"]["DefaultSeasonEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+        };
+        /**
+         * @description * `kharif` - Kharif
+         *     * `rabi` - Rabi
+         *     * `zaid` - Zaid
+         *     * `perennial` - Perennial
+         *     * `annual` - Annual
+         * @enum {string}
+         */
+        DefaultSeasonEnum: "kharif" | "rabi" | "zaid" | "perennial" | "annual";
+        District: {
+            readonly id: number;
+            lgd_code?: number | null;
+            name: string;
+            name_local?: string | null;
+            state: number;
+            readonly state_name: string;
+        };
+        /** @description Doc 11 §3's duplicate response shape. */
+        DuplicateCandidate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            district: string | null;
+            /** Format: double */
+            similarity: number;
+            matched_on: string[];
+        };
+        DuplicateCheck: {
+            name: string;
+            district?: number | null;
+            state?: number | null;
+            /** Format: uuid */
+            exclude_id?: string | null;
+        };
         Health: {
             status: string;
         };
+        /**
+         * @description * `producer_company` - Producer company
+         *     * `cooperative_society` - Cooperative society
+         *     * `section_8_company` - Section 8 company
+         *     * `private_limited` - Private limited
+         *     * `public_limited` - Public limited
+         *     * `llp` - LLP
+         *     * `partnership` - Partnership
+         *     * `proprietorship` - Proprietorship
+         *     * `trust` - Trust
+         *     * `society` - Society
+         *     * `statutory_body` - Statutory body
+         *     * `unregistered` - Unregistered
+         *     * `unknown` - Unknown
+         * @enum {string}
+         */
+        LegalFormEnum: "producer_company" | "cooperative_society" | "section_8_company" | "private_limited" | "public_limited" | "llp" | "partnership" | "proprietorship" | "trust" | "society" | "statutory_body" | "unregistered" | "unknown";
         /**
          * @description Issues the token pair and reports whether MFA still has to be satisfied.
          *
@@ -206,10 +541,282 @@ export interface components {
         MFAVerify: {
             token: string;
         };
+        /** @enum {unknown} */
+        NullEnum: null;
+        /** @description The full record, including whichever profile the type discriminator implies. */
+        OrganisationDetail: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly state_detail: components["schemas"]["State"];
+            readonly district_detail: components["schemas"]["District"];
+            readonly profile: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Human-friendly: FPO-UP-000123 */
+            org_code?: string | null;
+            type: components["schemas"]["TypeEnum"];
+            status?: components["schemas"]["StatusEnum"];
+            legal_form?: components["schemas"]["LegalFormEnum"];
+            name: string;
+            /** @description Devanagari, kept verbatim. */
+            name_local?: string | null;
+            short_name?: string | null;
+            /** @description Every other spelling this org is known by. Matching reads these. */
+            aliases?: string[];
+            cin?: string | null;
+            registration_no?: string | null;
+            registration_act?: string | null;
+            /** Format: date */
+            registration_date?: string | null;
+            /**
+             * PAN (masked)
+             * @description Masked only: ABCDE****F. A full PAN never enters this column.
+             */
+            pan_masked?: string | null;
+            gstin?: string | null;
+            udyam_no?: string | null;
+            address_line1?: string | null;
+            address_line2?: string | null;
+            pincode?: string | null;
+            /** Format: decimal */
+            latitude?: string | null;
+            /** Format: decimal */
+            longitude?: string | null;
+            website?: string | null;
+            established_year?: number | null;
+            member_count?: number | null;
+            women_member_count?: number | null;
+            /** Format: decimal */
+            annual_turnover_inr?: string | null;
+            /** @description e.g. 2024-25 */
+            turnover_fy?: string | null;
+            /** @description NABARD, SFAC, NCDC, state department */
+            promoting_agency?: string | null;
+            /** @description e.g. 10,000 FPO scheme cluster id */
+            scheme_reference?: string | null;
+            quality_tier?: components["schemas"]["QualityTierEnum"];
+            readonly completeness_score: number;
+            tags?: string[];
+            extra?: unknown;
+            is_deleted?: boolean;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            state?: number | null;
+            district?: number | null;
+            block?: number | null;
+            village?: number | null;
+            /** Format: uuid */
+            parent_org?: string | null;
+            primary_source?: number | null;
+            /** Format: uuid */
+            owner_user?: string | null;
+            /** Format: uuid */
+            merged_into?: string | null;
+        };
+        /**
+         * @description The grid row. Deliberately narrow.
+         *
+         *     A list of 50 organisations that each carry their full profile is four
+         *     joins and roughly eight times the payload, to render a table showing six
+         *     columns. Detail is a click away.
+         */
+        OrganisationList: {
+            /** Format: uuid */
+            readonly id: string;
+            /** @description Human-friendly: FPO-UP-000123 */
+            org_code?: string | null;
+            name: string;
+            /** @description Devanagari, kept verbatim. */
+            name_local?: string | null;
+            type: components["schemas"]["TypeEnum"];
+            status?: components["schemas"]["StatusEnum"];
+            quality_tier?: components["schemas"]["QualityTierEnum"];
+            completeness_score?: number;
+            state?: number | null;
+            readonly state_name: string;
+            district?: number | null;
+            readonly district_name: string;
+            member_count?: number | null;
+            /** Format: date-time */
+            readonly updated_at: string;
+        };
+        PaginatedBlockList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["Block"][];
+        };
+        PaginatedCropList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["Crop"][];
+        };
+        PaginatedDistrictList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["District"][];
+        };
+        PaginatedDuplicateCandidateList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["DuplicateCandidate"][];
+        };
+        PaginatedOrganisationListList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["OrganisationList"][];
+        };
+        PaginatedStateList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["State"][];
+        };
+        PaginatedVillageList: {
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             */
+            previous?: string | null;
+            results: components["schemas"]["Village"][];
+        };
         PasswordChange: {
             current_password: string;
             new_password: string;
         };
+        /** @description The full record, including whichever profile the type discriminator implies. */
+        PatchedOrganisationDetail: {
+            /** Format: uuid */
+            readonly id?: string;
+            readonly state_detail?: components["schemas"]["State"];
+            readonly district_detail?: components["schemas"]["District"];
+            readonly profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Human-friendly: FPO-UP-000123 */
+            org_code?: string | null;
+            type?: components["schemas"]["TypeEnum"];
+            status?: components["schemas"]["StatusEnum"];
+            legal_form?: components["schemas"]["LegalFormEnum"];
+            name?: string;
+            /** @description Devanagari, kept verbatim. */
+            name_local?: string | null;
+            short_name?: string | null;
+            /** @description Every other spelling this org is known by. Matching reads these. */
+            aliases?: string[];
+            cin?: string | null;
+            registration_no?: string | null;
+            registration_act?: string | null;
+            /** Format: date */
+            registration_date?: string | null;
+            /**
+             * PAN (masked)
+             * @description Masked only: ABCDE****F. A full PAN never enters this column.
+             */
+            pan_masked?: string | null;
+            gstin?: string | null;
+            udyam_no?: string | null;
+            address_line1?: string | null;
+            address_line2?: string | null;
+            pincode?: string | null;
+            /** Format: decimal */
+            latitude?: string | null;
+            /** Format: decimal */
+            longitude?: string | null;
+            website?: string | null;
+            established_year?: number | null;
+            member_count?: number | null;
+            women_member_count?: number | null;
+            /** Format: decimal */
+            annual_turnover_inr?: string | null;
+            /** @description e.g. 2024-25 */
+            turnover_fy?: string | null;
+            /** @description NABARD, SFAC, NCDC, state department */
+            promoting_agency?: string | null;
+            /** @description e.g. 10,000 FPO scheme cluster id */
+            scheme_reference?: string | null;
+            quality_tier?: components["schemas"]["QualityTierEnum"];
+            readonly completeness_score?: number;
+            tags?: string[];
+            extra?: unknown;
+            is_deleted?: boolean;
+            /** Format: date-time */
+            readonly created_at?: string;
+            /** Format: date-time */
+            readonly updated_at?: string;
+            state?: number | null;
+            district?: number | null;
+            block?: number | null;
+            village?: number | null;
+            /** Format: uuid */
+            parent_org?: string | null;
+            primary_source?: number | null;
+            /** Format: uuid */
+            owner_user?: string | null;
+            /** Format: uuid */
+            merged_into?: string | null;
+        };
+        /**
+         * @description * `gold` - Gold
+         *     * `silver` - Silver
+         *     * `bronze` - Bronze
+         *     * `quarantine` - Quarantine
+         * @enum {string}
+         */
+        QualityTierEnum: "gold" | "silver" | "bronze" | "quarantine";
         /**
          * @description * `field_agent` - Field / BD Agent
          *     * `bd_manager` - BD Manager
@@ -222,6 +829,25 @@ export interface components {
          * @enum {string}
          */
         RoleEnum: "field_agent" | "bd_manager" | "project_manager" | "campaign_manager" | "data_ops" | "leadership" | "compliance" | "admin";
+        State: {
+            id: number;
+            lgd_code?: number | null;
+            name: string;
+            name_local?: string | null;
+            iso_code?: string | null;
+            /** Union Territory */
+            is_ut?: boolean;
+        };
+        /**
+         * @description * `prospect` - Prospect
+         *     * `active` - Active
+         *     * `dormant` - Dormant
+         *     * `defunct` - Defunct
+         *     * `merged` - Merged
+         *     * `blacklisted` - Blacklisted
+         * @enum {string}
+         */
+        StatusEnum: "prospect" | "active" | "dormant" | "defunct" | "merged" | "blacklisted";
         TokenPair: {
             access: string;
             refresh: string;
@@ -230,6 +856,20 @@ export interface components {
             readonly access: string;
             refresh: string;
         };
+        /**
+         * @description * `fpo` - FPO (Farmer Producer Organisation)
+         *     * `acs` - Cooperative society / PACS
+         *     * `sugar_mill` - Sugar mill
+         *     * `cooperative_federation` - Cooperative federation
+         *     * `input_dealer` - Input dealer
+         *     * `ngo_promoting_institution` - NGO / promoting institution
+         *     * `government_body` - Government body
+         *     * `private_company` - Private company
+         *     * `bank_nbfc` - Bank / NBFC
+         *     * `other` - Other
+         * @enum {string}
+         */
+        TypeEnum: "fpo" | "acs" | "sugar_mill" | "cooperative_federation" | "input_dealer" | "ngo_promoting_institution" | "government_body" | "private_company" | "bank_nbfc" | "other";
         /** @description `GET /auth/me/` — identity, role, permissions and territory. */
         User: {
             readonly id: number;
@@ -255,6 +895,20 @@ export interface components {
             /** @description Set automatically for roles in MFA_REQUIRED_ROLES. */
             readonly mfa_enforced: boolean;
             readonly permissions: string[];
+        };
+        Village: {
+            readonly id: number;
+            lgd_code?: number | null;
+            name: string;
+            name_local?: string | null;
+            block?: number | null;
+            district: number;
+            readonly district_name: string;
+            pincode?: string | null;
+            /** Format: decimal */
+            latitude?: string | null;
+            /** Format: decimal */
+            longitude?: string | null;
         };
     };
     responses: never;
@@ -433,6 +1087,154 @@ export interface operations {
             };
         };
     };
+    blocks_list: {
+        parameters: {
+            query?: {
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                /** @description Filter to one district id. */
+                district?: number;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description Match against name or name_local. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedBlockList"];
+                };
+            };
+        };
+    };
+    blocks_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this block / tehsil. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Block"];
+                };
+            };
+        };
+    };
+    crops_list: {
+        parameters: {
+            query?: {
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description Match against name or code. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedCropList"];
+                };
+            };
+        };
+    };
+    crops_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this crop. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Crop"];
+                };
+            };
+        };
+    };
+    districts_list: {
+        parameters: {
+            query?: {
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description Match against name or name_local. */
+                q?: string;
+                /** @description Filter to one state id. */
+                state?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedDistrictList"];
+                };
+            };
+        };
+    };
+    districts_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this district. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["District"];
+                };
+            };
+        };
+    };
     healthz_retrieve: {
         parameters: {
             query?: never;
@@ -448,6 +1250,329 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    organisations_list: {
+        parameters: {
+            query?: {
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                district?: number;
+                /** @description Include soft-deleted rows. Off by default; nothing is hard-deleted. */
+                include_deleted?: boolean;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                member_count__gte?: number;
+                member_count__lte?: number;
+                /** @description Owner's user public_id. */
+                owner?: string;
+                /** @description Name, local name, alias, org code, CIN. */
+                q?: string;
+                /** @description gold | silver | bronze | quarantine */
+                quality_tier?: string;
+                state?: number;
+                /** @description core.org_status value. */
+                status?: string;
+                /** @description core.org_type value. */
+                type?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedOrganisationListList"];
+                };
+            };
+        };
+    };
+    organisations_create: {
+        parameters: {
+            query?: {
+                /** @description Override duplicate blocking. */
+                force?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganisationDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["OrganisationDetail"];
+                "multipart/form-data": components["schemas"]["OrganisationDetail"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationDetail"];
+                };
+            };
+        };
+    };
+    organisations_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this organisation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationDetail"];
+                };
+            };
+        };
+    };
+    organisations_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this organisation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganisationDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["OrganisationDetail"];
+                "multipart/form-data": components["schemas"]["OrganisationDetail"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationDetail"];
+                };
+            };
+        };
+    };
+    organisations_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this organisation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    organisations_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this organisation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedOrganisationDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedOrganisationDetail"];
+                "multipart/form-data": components["schemas"]["PatchedOrganisationDetail"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationDetail"];
+                };
+            };
+        };
+    };
+    organisations_bulk_assign_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkAssign"];
+                "application/x-www-form-urlencoded": components["schemas"]["BulkAssign"];
+                "multipart/form-data": components["schemas"]["BulkAssign"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    organisations_check_duplicates_create: {
+        parameters: {
+            query?: {
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                /** @description Number of results to return per page. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateCheck"];
+                "application/x-www-form-urlencoded": components["schemas"]["DuplicateCheck"];
+                "multipart/form-data": components["schemas"]["DuplicateCheck"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedDuplicateCandidateList"];
+                };
+            };
+        };
+    };
+    states_list: {
+        parameters: {
+            query?: {
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description Match against name or name_local. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedStateList"];
+                };
+            };
+        };
+    };
+    states_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique value identifying this state / UT. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["State"];
+                };
+            };
+        };
+    };
+    villages_list: {
+        parameters: {
+            query?: {
+                /** @description Block id. */
+                block?: number;
+                /** @description The pagination cursor value. */
+                cursor?: string;
+                /** @description District id. */
+                district?: number;
+                /** @description Number of results to return per page. */
+                limit?: number;
+                /** @description Six-digit pincode. */
+                pincode?: string;
+                /** @description Match against name or name_local. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedVillageList"];
+                };
+            };
+        };
+    };
+    villages_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this village. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Village"];
                 };
             };
         };

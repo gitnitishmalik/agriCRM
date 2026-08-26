@@ -157,8 +157,9 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    # Cursor pagination: offset breaks on large, actively-written tables (Doc 11 §1)
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.CursorPagination",
+    # Cursor pagination: offset breaks on large, actively-written tables (Doc 11 §1).
+    # DRF's own class orders on `-created`, which no model here has.
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.TimelineCursorPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.ScopedRateThrottle",),
     "DEFAULT_THROTTLE_RATES": {

@@ -179,6 +179,181 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/v1/blocks/:
+    get:
+      operationId: blocks_list
+      summary: List blocks / tehsils, optionally within one district
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: district
+        schema:
+          type: integer
+        description: Filter to one district id.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Match against name or name_local.
+      tags:
+      - blocks
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBlockList'
+          description: ''
+  /api/v1/blocks/{id}/:
+    get:
+      operationId: blocks_retrieve
+      summary: Fetch one block by id
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this block / tehsil.
+        required: true
+      tags:
+      - blocks
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Block'
+          description: ''
+  /api/v1/crops/:
+    get:
+      operationId: crops_list
+      summary: List crops
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Match against name or code.
+      tags:
+      - crops
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCropList'
+          description: ''
+  /api/v1/crops/{id}/:
+    get:
+      operationId: crops_retrieve
+      summary: Fetch one crop by id
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this crop.
+        required: true
+      tags:
+      - crops
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Crop'
+          description: ''
+  /api/v1/districts/:
+    get:
+      operationId: districts_list
+      summary: List districts, optionally within one state
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Match against name or name_local.
+      - in: query
+        name: state
+        schema:
+          type: integer
+        description: Filter to one state id.
+      tags:
+      - districts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDistrictList'
+          description: ''
+  /api/v1/districts/{id}/:
+    get:
+      operationId: districts_retrieve
+      summary: Fetch one district by id
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this district.
+        required: true
+      tags:
+      - districts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/District'
+          description: ''
   /api/v1/healthz/:
     get:
       operationId: healthz_retrieve
@@ -193,8 +368,583 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
           description: ''
+  /api/v1/organisations/:
+    get:
+      operationId: organisations_list
+      description: Soft-deleted rows are excluded unless `include_deleted=true`. An
+        unsupported filter is a 400 rather than a silently ignored parameter.
+      summary: List organisations
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: district
+        schema:
+          type: integer
+      - in: query
+        name: include_deleted
+        schema:
+          type: boolean
+        description: Include soft-deleted rows. Off by default; nothing is hard-deleted.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: member_count__gte
+        schema:
+          type: integer
+      - in: query
+        name: member_count__lte
+        schema:
+          type: integer
+      - in: query
+        name: owner
+        schema:
+          type: string
+        description: Owner's user public_id.
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Name, local name, alias, org code, CIN.
+      - in: query
+        name: quality_tier
+        schema:
+          type: string
+        description: gold | silver | bronze | quarantine
+      - in: query
+        name: state
+        schema:
+          type: integer
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: core.org_status value.
+      - in: query
+        name: type
+        schema:
+          type: string
+        description: core.org_type value.
+      tags:
+      - organisations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrganisationListList'
+          description: ''
+    post:
+      operationId: organisations_create
+      description: Returns **409** with candidate matches when the name looks like
+        an organisation already in the registry for that district. Pass `?force=true`
+        to create anyway — the override is recorded on the row.
+      summary: Create an organisation
+      parameters:
+      - in: query
+        name: force
+        schema:
+          type: boolean
+        description: Override duplicate blocking.
+      tags:
+      - organisations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganisationDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OrganisationDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OrganisationDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganisationDetail'
+          description: ''
+  /api/v1/organisations/{id}/:
+    get:
+      operationId: organisations_retrieve
+      description: Includes the profile implied by the type discriminator. Resolves
+        soft-deleted rows too, so a stored id never turns into a 404 that looks like
+        the id was wrong.
+      summary: Fetch one organisation
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this organisation.
+        required: true
+      tags:
+      - organisations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganisationDetail'
+          description: ''
+    put:
+      operationId: organisations_update
+      summary: Replace an organisation
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this organisation.
+        required: true
+      tags:
+      - organisations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganisationDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OrganisationDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OrganisationDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganisationDetail'
+          description: ''
+    patch:
+      operationId: organisations_partial_update
+      summary: Update part of an organisation
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this organisation.
+        required: true
+      tags:
+      - organisations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganisationDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganisationDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganisationDetail'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganisationDetail'
+          description: ''
+    delete:
+      operationId: organisations_destroy
+      description: Sets `is_deleted`; the row and its id continue to resolve.
+      summary: Soft delete an organisation
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this organisation.
+        required: true
+      tags:
+      - organisations
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/organisations/bulk-assign/:
+    post:
+      operationId: organisations_bulk_assign_create
+      summary: Reassign the owner of many organisations
+      tags:
+      - organisations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkAssign'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkAssign'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkAssign'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/organisations/check-duplicates/:
+    post:
+      operationId: organisations_check_duplicates_create
+      description: Live duplicate check for a create form. Same scorer the create
+        endpoint and the admin use, so a client can show the warning before the user
+        has filled in the rest of the record.
+      summary: Check a name for likely duplicates
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - organisations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DuplicateCheck'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DuplicateCheck'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DuplicateCheck'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDuplicateCandidateList'
+          description: ''
+  /api/v1/states/:
+    get:
+      operationId: states_list
+      summary: List states and union territories
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Match against name or name_local.
+      tags:
+      - states
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStateList'
+          description: ''
+  /api/v1/states/{id}/:
+    get:
+      operationId: states_retrieve
+      summary: Fetch one state by id
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+        description: A unique value identifying this state / UT.
+        required: true
+      tags:
+      - states
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/State'
+          description: ''
+  /api/v1/villages/:
+    get:
+      operationId: villages_list
+      description: "\U0001F534 Requires `district`, `block` or `pincode`. `ref.village`
+        holds roughly 660,000 rows; an unscoped list of it is a sequential scan answering
+        a question nobody asked."
+      summary: List villages within a district, block or pincode
+      parameters:
+      - in: query
+        name: block
+        schema:
+          type: integer
+        description: Block id.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: district
+        schema:
+          type: integer
+        description: District id.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: pincode
+        schema:
+          type: string
+        description: Six-digit pincode.
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Match against name or name_local.
+      tags:
+      - villages
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVillageList'
+          description: ''
+  /api/v1/villages/{id}/:
+    get:
+      operationId: villages_retrieve
+      summary: Fetch one village by id
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this village.
+        required: true
+      tags:
+      - villages
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Village'
+          description: ''
 components:
   schemas:
+    BlankEnum:
+      enum:
+      - ''
+    Block:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        lgd_code:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+        district:
+          type: integer
+        district_name:
+          type: string
+          readOnly: true
+      required:
+      - district
+      - district_name
+      - id
+      - name
+    BulkAssign:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 500
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - ids
+      - owner_user_id
+    Crop:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+          description: cereal, pulse, oilseed, cash, horticulture, fodder
+        default_season:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/DefaultSeasonEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+      required:
+      - code
+      - id
+      - name
+    DefaultSeasonEnum:
+      enum:
+      - kharif
+      - rabi
+      - zaid
+      - perennial
+      - annual
+      type: string
+      description: |-
+        * `kharif` - Kharif
+        * `rabi` - Rabi
+        * `zaid` - Zaid
+        * `perennial` - Perennial
+        * `annual` - Annual
+    District:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        lgd_code:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+        state:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+        state_name:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - name
+      - state
+      - state_name
+    DuplicateCandidate:
+      type: object
+      description: Doc 11 §3's duplicate response shape.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        district:
+          type: string
+          nullable: true
+        similarity:
+          type: number
+          format: double
+        matched_on:
+          type: array
+          items:
+            type: string
+      required:
+      - district
+      - id
+      - matched_on
+      - name
+      - similarity
+    DuplicateCheck:
+      type: object
+      properties:
+        name:
+          type: string
+        district:
+          type: integer
+          nullable: true
+        state:
+          type: integer
+          nullable: true
+        exclude_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - name
     Health:
       type: object
       properties:
@@ -202,6 +952,36 @@ components:
           type: string
       required:
       - status
+    LegalFormEnum:
+      enum:
+      - producer_company
+      - cooperative_society
+      - section_8_company
+      - private_limited
+      - public_limited
+      - llp
+      - partnership
+      - proprietorship
+      - trust
+      - society
+      - statutory_body
+      - unregistered
+      - unknown
+      type: string
+      description: |-
+        * `producer_company` - Producer company
+        * `cooperative_society` - Cooperative society
+        * `section_8_company` - Section 8 company
+        * `private_limited` - Private limited
+        * `public_limited` - Public limited
+        * `llp` - LLP
+        * `partnership` - Partnership
+        * `proprietorship` - Proprietorship
+        * `trust` - Trust
+        * `society` - Society
+        * `statutory_body` - Statutory body
+        * `unregistered` - Unregistered
+        * `unknown` - Unknown
     Login:
       type: object
       description: "Issues the token pair and reports whether MFA still has to be
@@ -256,6 +1036,393 @@ components:
           minLength: 6
       required:
       - token
+    NullEnum:
+      enum:
+      - null
+    OrganisationDetail:
+      type: object
+      description: The full record, including whichever profile the type discriminator
+        implies.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        state_detail:
+          allOf:
+          - $ref: '#/components/schemas/State'
+          readOnly: true
+        district_detail:
+          allOf:
+          - $ref: '#/components/schemas/District'
+          readOnly: true
+        profile:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        org_code:
+          type: string
+          nullable: true
+          description: 'Human-friendly: FPO-UP-000123'
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        legal_form:
+          $ref: '#/components/schemas/LegalFormEnum'
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+          description: Devanagari, kept verbatim.
+        short_name:
+          type: string
+          nullable: true
+        aliases:
+          type: array
+          items:
+            type: string
+          description: Every other spelling this org is known by. Matching reads these.
+        cin:
+          type: string
+          nullable: true
+          maxLength: 21
+        registration_no:
+          type: string
+          nullable: true
+        registration_act:
+          type: string
+          nullable: true
+        registration_date:
+          type: string
+          format: date
+          nullable: true
+        pan_masked:
+          type: string
+          nullable: true
+          title: PAN (masked)
+          description: 'Masked only: ABCDE****F. A full PAN never enters this column.'
+          maxLength: 14
+        gstin:
+          type: string
+          nullable: true
+          maxLength: 15
+        udyam_no:
+          type: string
+          nullable: true
+        address_line1:
+          type: string
+          nullable: true
+        address_line2:
+          type: string
+          nullable: true
+        pincode:
+          type: string
+          nullable: true
+          maxLength: 6
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        established_year:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+          nullable: true
+        member_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        women_member_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        annual_turnover_inr:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,2})?$
+          nullable: true
+        turnover_fy:
+          type: string
+          nullable: true
+          description: e.g. 2024-25
+          maxLength: 7
+        promoting_agency:
+          type: string
+          nullable: true
+          description: NABARD, SFAC, NCDC, state department
+        scheme_reference:
+          type: string
+          nullable: true
+          description: e.g. 10,000 FPO scheme cluster id
+        quality_tier:
+          $ref: '#/components/schemas/QualityTierEnum'
+        completeness_score:
+          type: integer
+          readOnly: true
+        tags:
+          type: array
+          items:
+            type: string
+        extra: {}
+        is_deleted:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        state:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+          nullable: true
+        district:
+          type: integer
+          nullable: true
+        block:
+          type: integer
+          nullable: true
+        village:
+          type: integer
+          nullable: true
+        parent_org:
+          type: string
+          format: uuid
+          nullable: true
+        primary_source:
+          type: integer
+          nullable: true
+        owner_user:
+          type: string
+          format: uuid
+          nullable: true
+        merged_into:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - completeness_score
+      - created_at
+      - district_detail
+      - id
+      - name
+      - profile
+      - state_detail
+      - type
+      - updated_at
+    OrganisationList:
+      type: object
+      description: |-
+        The grid row. Deliberately narrow.
+
+        A list of 50 organisations that each carry their full profile is four
+        joins and roughly eight times the payload, to render a table showing six
+        columns. Detail is a click away.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        org_code:
+          type: string
+          nullable: true
+          description: 'Human-friendly: FPO-UP-000123'
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+          description: Devanagari, kept verbatim.
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        quality_tier:
+          $ref: '#/components/schemas/QualityTierEnum'
+        completeness_score:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+        state:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+          nullable: true
+        state_name:
+          type: string
+          readOnly: true
+        district:
+          type: integer
+          nullable: true
+        district_name:
+          type: string
+          readOnly: true
+        member_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - district_name
+      - id
+      - name
+      - state_name
+      - type
+      - updated_at
+    PaginatedBlockList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Block'
+    PaginatedCropList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Crop'
+    PaginatedDistrictList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/District'
+    PaginatedDuplicateCandidateList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DuplicateCandidate'
+    PaginatedOrganisationListList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganisationList'
+    PaginatedStateList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/State'
+    PaginatedVillageList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Village'
     PasswordChange:
       type: object
       properties:
@@ -268,6 +1435,196 @@ components:
       required:
       - current_password
       - new_password
+    PatchedOrganisationDetail:
+      type: object
+      description: The full record, including whichever profile the type discriminator
+        implies.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        state_detail:
+          allOf:
+          - $ref: '#/components/schemas/State'
+          readOnly: true
+        district_detail:
+          allOf:
+          - $ref: '#/components/schemas/District'
+          readOnly: true
+        profile:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        org_code:
+          type: string
+          nullable: true
+          description: 'Human-friendly: FPO-UP-000123'
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        legal_form:
+          $ref: '#/components/schemas/LegalFormEnum'
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+          description: Devanagari, kept verbatim.
+        short_name:
+          type: string
+          nullable: true
+        aliases:
+          type: array
+          items:
+            type: string
+          description: Every other spelling this org is known by. Matching reads these.
+        cin:
+          type: string
+          nullable: true
+          maxLength: 21
+        registration_no:
+          type: string
+          nullable: true
+        registration_act:
+          type: string
+          nullable: true
+        registration_date:
+          type: string
+          format: date
+          nullable: true
+        pan_masked:
+          type: string
+          nullable: true
+          title: PAN (masked)
+          description: 'Masked only: ABCDE****F. A full PAN never enters this column.'
+          maxLength: 14
+        gstin:
+          type: string
+          nullable: true
+          maxLength: 15
+        udyam_no:
+          type: string
+          nullable: true
+        address_line1:
+          type: string
+          nullable: true
+        address_line2:
+          type: string
+          nullable: true
+        pincode:
+          type: string
+          nullable: true
+          maxLength: 6
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        established_year:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+          nullable: true
+        member_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        women_member_count:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        annual_turnover_inr:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,2})?$
+          nullable: true
+        turnover_fy:
+          type: string
+          nullable: true
+          description: e.g. 2024-25
+          maxLength: 7
+        promoting_agency:
+          type: string
+          nullable: true
+          description: NABARD, SFAC, NCDC, state department
+        scheme_reference:
+          type: string
+          nullable: true
+          description: e.g. 10,000 FPO scheme cluster id
+        quality_tier:
+          $ref: '#/components/schemas/QualityTierEnum'
+        completeness_score:
+          type: integer
+          readOnly: true
+        tags:
+          type: array
+          items:
+            type: string
+        extra: {}
+        is_deleted:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        state:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+          nullable: true
+        district:
+          type: integer
+          nullable: true
+        block:
+          type: integer
+          nullable: true
+        village:
+          type: integer
+          nullable: true
+        parent_org:
+          type: string
+          format: uuid
+          nullable: true
+        primary_source:
+          type: integer
+          nullable: true
+        owner_user:
+          type: string
+          format: uuid
+          nullable: true
+        merged_into:
+          type: string
+          format: uuid
+          nullable: true
+    QualityTierEnum:
+      enum:
+      - gold
+      - silver
+      - bronze
+      - quarantine
+      type: string
+      description: |-
+        * `gold` - Gold
+        * `silver` - Silver
+        * `bronze` - Bronze
+        * `quarantine` - Quarantine
     RoleEnum:
       enum:
       - field_agent
@@ -288,6 +1645,48 @@ components:
         * `leadership` - Leadership
         * `compliance` - Compliance Officer
         * `admin` - System Admin
+    State:
+      type: object
+      properties:
+        id:
+          type: integer
+          maximum: 32767
+          minimum: -32768
+        lgd_code:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+        iso_code:
+          type: string
+          nullable: true
+        is_ut:
+          type: boolean
+          title: Union Territory
+      required:
+      - id
+      - name
+    StatusEnum:
+      enum:
+      - prospect
+      - active
+      - dormant
+      - defunct
+      - merged
+      - blacklisted
+      type: string
+      description: |-
+        * `prospect` - Prospect
+        * `active` - Active
+        * `dormant` - Dormant
+        * `defunct` - Defunct
+        * `merged` - Merged
+        * `blacklisted` - Blacklisted
     TokenPair:
       type: object
       properties:
@@ -309,6 +1708,30 @@ components:
       required:
       - access
       - refresh
+    TypeEnum:
+      enum:
+      - fpo
+      - acs
+      - sugar_mill
+      - cooperative_federation
+      - input_dealer
+      - ngo_promoting_institution
+      - government_body
+      - private_company
+      - bank_nbfc
+      - other
+      type: string
+      description: |-
+        * `fpo` - FPO (Farmer Producer Organisation)
+        * `acs` - Cooperative society / PACS
+        * `sugar_mill` - Sugar mill
+        * `cooperative_federation` - Cooperative federation
+        * `input_dealer` - Input dealer
+        * `ngo_promoting_institution` - NGO / promoting institution
+        * `government_body` - Government body
+        * `private_company` - Private company
+        * `bank_nbfc` - Bank / NBFC
+        * `other` - Other
     User:
       type: object
       description: '`GET /auth/me/` — identity, role, permissions and territory.'
@@ -367,6 +1790,49 @@ components:
       - mfa_enforced
       - permissions
       - role
+    Village:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        lgd_code:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        name:
+          type: string
+        name_local:
+          type: string
+          nullable: true
+        block:
+          type: integer
+          nullable: true
+        district:
+          type: integer
+        district_name:
+          type: string
+          readOnly: true
+        pincode:
+          type: string
+          nullable: true
+          maxLength: 6
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+      required:
+      - district
+      - district_name
+      - id
+      - name
   securitySchemes:
     jwtAuth:
       type: http

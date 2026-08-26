@@ -34,6 +34,22 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]            # hardcoded test credentials
+
+# DJ001 tells Django models to use "" rather than NULL for text. That advice is
+# for tables Django owns. These modules map `sql/schema.sql`, where the columns
+# are genuinely nullable and the difference between NULL and "" is the
+# difference between "we have not found out yet" and "we checked, there is
+# none" — which is the whole point of a provenance-tracking registry. Add a
+# line here when a new app maps DDL-owned tables; do not widen the glob.
+"apps/geography/models.py" = ["DJ001"]
+"apps/organisations/models.py" = ["DJ001"]
+"apps/dataquality/models.py" = ["DJ001"]
+
+# DJ007 objects to fields = "__all__" on a ModelForm. In an admin form it is
+# inert: ModelAdmin rebuilds the field list from its own fieldsets before the
+# form is ever instantiated, so naming fields here would only create a second
+# list to keep in sync with the first.
+"apps/*/admin.py" = ["DJ007"]
 "config/settings/*" = ["F403", "F405"]  # star-import is the settings idiom
 # 0.0.0.0 in dev ALLOWED_HOSTS is deliberate — the app runs in a container and
 # is reached from the host. Production reads ALLOWED_HOSTS from the environment.

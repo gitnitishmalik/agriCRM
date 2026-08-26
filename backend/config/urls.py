@@ -26,5 +26,7 @@ urlpatterns = [
         name="swagger-ui",
     ),
     path(f"{API}auth/", include("apps.accounts.urls")),
+    path(f"{API}", include("apps.geography.urls")),
+    path(f"{API}", include("apps.organisations.urls")),
     path(f"{API}", include("apps.reporting.urls")),  # /healthz lives here
 ]
