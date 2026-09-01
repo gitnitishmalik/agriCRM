@@ -278,3 +278,38 @@ export async function apiText(path: string, options: RequestOptions = {}): Promi
 
   return text
 }
+
+/**
+ * Fetch a binary document with the bearer token attached.
+ *
+ * 🔴 Same reason as `apiText`: `/invoices/{id}/pdf/` sits behind the same auth
+ * as everything else, and an `<a href>` or `window.open` is a plain browser GET
+ * with no Authorization header on it. Pointing either at the endpoint downloads
+ * the API's 401 body as a file called "invoice.pdf", which is worse than
+ * failing — you get a broken file and no error.
+ *
+ * The error path still parses JSON, because a failure here is an error
+ * envelope rather than a document. The 501 that a server without WeasyPrint
+ * returns is the one the caller most needs to read.
+ */
+export async function apiBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  const res = await request(path, options)
+
+  if (!res.ok) {
+    let err: Record<string, string> = {}
+    try {
+      err = JSON.parse(await res.text())?.error ?? {}
+    } catch {
+      // A non-JSON error body — keep the status, which is the useful part.
+    }
+    throw new ApiError(
+      res.status,
+      err.code ?? 'error',
+      err.message ?? res.statusText,
+      {},
+      err.request_id ?? null,
+    )
+  }
+
+  return res.blob()
+}

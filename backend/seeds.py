@@ -42,6 +42,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import settings
 from backend.models.accounts import User
 from backend.models.billing import BillingEntity
 from backend.security import hash_password
@@ -52,23 +53,19 @@ from backend.security import hash_password
 TEPL_BANK_SWITCH = dt.date(2026, 4, 1)
 
 
-def _secret(name: str, placeholder: str) -> str:
-    """
-    A value too sensitive to commit, with a placeholder that is visibly one.
-
-    The placeholder is deliberately not a plausible number. A default that
-    looked real would render a real-looking invoice pointing nowhere, which is
-    the failure this whole arrangement exists to avoid.
-    """
-    return os.environ.get(name) or placeholder
-
-
 #: 🔴 Not in the repository. See the module docstring.
-TFD_ACCOUNT_NO = _secret("TFD_BANK_ACCOUNT_NO", "XXXXXXXXXXXX")
-TEPL_ACCOUNT_NO = _secret("TEPL_BANK_ACCOUNT_NO", "XXXXXXXXXXXX")
-BILLING_CONTACT_PHONE = _secret("BILLING_CONTACT_PHONE", "0000000000")
-TFD_CONTACT_NAME = _secret("TFD_CONTACT_NAME", "Contact not configured")
-TFD_SIGNATORY_NAME = _secret("TFD_SIGNATORY_NAME", "Signatory not configured")
+#:
+#: Read off `settings`, never `os.environ`. pydantic-settings loads `.env` onto
+#: the settings object and never into the process environment, so the first
+#: version of this — `os.environ.get("TFD_BANK_ACCOUNT_NO")` — never saw the
+#: values a developer had actually configured. It seeded the placeholders in
+#: silence, and the first sign was an issued-looking invoice carrying
+#: `A/c No: XXXXXXXXXXXX`.
+TFD_ACCOUNT_NO = settings.tfd_bank_account_no
+TEPL_ACCOUNT_NO = settings.tepl_bank_account_no
+BILLING_CONTACT_PHONE = settings.billing_contact_phone
+TFD_CONTACT_NAME = settings.tfd_contact_name
+TFD_SIGNATORY_NAME = settings.tfd_signatory_name
 
 #: True when nothing was supplied, so the seeder can say so.
 USING_PLACEHOLDER_BANK_DETAILS = "XXXXXXXXXXXX" in (TFD_ACCOUNT_NO, TEPL_ACCOUNT_NO)
@@ -266,7 +263,6 @@ async def seed_dev_users(session: AsyncSession, *, password: str | None = None) 
     reaching an instance that holds real data (R11), and it is a runtime check
     rather than a comment because a comment does not stop anything.
     """
-    import os
     from datetime import UTC, datetime
 
     from backend.config import settings

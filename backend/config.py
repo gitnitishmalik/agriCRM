@@ -77,6 +77,28 @@ class Settings(BaseSettings):
     nvidia_text_model: str = "openai/gpt-oss-20b"
     nvidia_timeout_seconds: int = 120
 
+    # -- Billing entity details kept out of the repository -----------------
+    #
+    # 🔴 These belong on Settings and nowhere else, because Settings is the
+    # only thing here that reads `.env`.
+    #
+    # They were first written as `os.environ.get(...)` lookups in `seeds.py`,
+    # which silently never saw them: pydantic-settings loads `.env` onto this
+    # object and never into the process environment. The seeder therefore ran
+    # on its placeholders while `.env` held the real values, and the defect was
+    # invisible until an invoice came out carrying `A/c No: XXXXXXXXXXXX` and
+    # `Contact: 0000000000` — a document that looks complete and cannot be
+    # paid. Exactly the shape of the `TEST_DATABASE_URL` bug in `conftest.py`.
+    #
+    # The defaults are deliberately not plausible. A placeholder that looked
+    # like an account number would produce a real-looking invoice pointing
+    # nowhere, which is the failure this arrangement exists to prevent.
+    tfd_bank_account_no: str = "XXXXXXXXXXXX"
+    tepl_bank_account_no: str = "XXXXXXXXXXXX"
+    billing_contact_phone: str = "0000000000"
+    tfd_contact_name: str = "Contact not configured"
+    tfd_signatory_name: str = "Signatory not configured"
+
     # -- Collectors -------------------------------------------------------
     collector_contact_email: str = "data@thetaanalytics.in"
     scrapfly_api_key: str = ""
