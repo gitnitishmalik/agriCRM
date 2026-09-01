@@ -129,9 +129,18 @@ export function InvoiceNewPage() {
 
   /** Upload a document and let the reading fill the form. */
   async function onUpload(file: File) {
-    const read = await extract
+    const response = await extract
       .mutateAsync({ file, entityCode: draft.entity_code })
       .catch(() => null)
+    if (!response) return
+
+    // 🔴 `response.draft`, not `response`. The proposed fields are nested; this
+    // read them from the top level, so `read.lines` was `undefined` and
+    // `read.lines.length` threw on every successful upload. There is no error
+    // boundary above this route, so the throw unmounted the tree and the whole
+    // screen went blank — with the extraction sitting in the response, correct
+    // and unread.
+    const read = response.draft
     if (!read) return
 
     setDraft((d) => ({
@@ -148,8 +157,8 @@ export function InvoiceNewPage() {
       letter_ref: read.letter_ref ?? d.letter_ref,
       data_link_url: read.data_link_url ?? d.data_link_url,
       tax_rate_pct: String(read.tax_rate_pct ?? 18),
-      lines: read.lines.length
-        ? read.lines.map((line, i) => ({
+      lines: (read.lines ?? []).length
+        ? (read.lines ?? []).map((line, i) => ({
             ...emptyLine(i + 1),
             ...line,
             quantity: line.quantity != null ? String(line.quantity) : '',
@@ -235,9 +244,9 @@ export function InvoiceNewPage() {
             onFile={onUpload}
             pending={extract.isPending}
             error={extract.error instanceof ApiError ? extract.error.message : null}
-            warnings={extract.data?._warnings ?? []}
-            needsReview={extract.data?._needs_review ?? false}
-            notes={extract.data?._notes ?? null}
+            warnings={extract.data?.draft?._warnings ?? []}
+            needsReview={extract.data?.draft?._needs_review ?? false}
+            notes={extract.data?.draft?._notes ?? null}
           />
 
           <Card title="Document">

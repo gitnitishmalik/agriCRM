@@ -155,7 +155,15 @@ export interface PreviewResult {
   display: { taxable: string; tax: string; total: string }
 }
 
-export interface ExtractionResult {
+/**
+ * The fields the extractor proposes — the *inner* object.
+ *
+ * 🔴 This is `response.draft`, not the response. The interface described these
+ * fields at the top level, where the API has never put them, so `read.lines`
+ * was `undefined` and `read.lines.length` threw on every upload — a blank
+ * page, because there is no error boundary above this route.
+ */
+export interface ExtractionDraft {
   entity_code: string
   invoice_date: string | null
   buyer_name: string | null
@@ -171,11 +179,30 @@ export interface ExtractionResult {
   data_link_url: string | null
   tax_rate_pct: number
   lines: Array<Partial<DraftLine> & { description: string }>
-  extraction_id: string
   _warnings: string[]
   _confidence: Record<string, number>
   _needs_review: boolean
   _notes: string | null
+}
+
+/** One finding from the pre-accept checks, shown above the figures. */
+export interface ExtractionFinding {
+  code: string
+  severity: string
+  message: string
+}
+
+/** What `POST /invoices/extract/` actually returns. */
+export interface ExtractionResult {
+  extraction_id: string
+  draft: ExtractionDraft
+  findings: ExtractionFinding[]
+  blocking_count: number
+  can_accept_directly: boolean
+  duplicate: { invoice_id: string | null; reasons: string[] }
+  warnings: string[]
+  confidence: Record<string, number>
+  file: { sha256: string; content_type: string; pages: number | null; size_bytes: number }
 }
 
 export interface RegisterSummary {
