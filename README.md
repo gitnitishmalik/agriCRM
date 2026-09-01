@@ -73,6 +73,32 @@ Postgres is on **5433** and Redis on **6380**, not their defaults — a local
 PostgreSQL install commonly occupies 5432 and silently wins the connection,
 producing an auth failure that reads like a bad password.
 
+🔴 **The API belongs on 8001, not uvicorn's default 8000.** The Vite dev server
+proxies `/api` to `127.0.0.1:8001`, so an API started on 8000 leaves the UI
+unable to reach it — every screen loads and every request fails. `make run`,
+`make dev` and `python -m backend.run` all use 8001. If you invoke uvicorn by
+hand, pass `--port 8001`.
+
+### Running uvicorn directly
+
+Prefer `make run`, or `python -m backend.run` — the latter exists because on
+Windows uvicorn builds the event loop *before* importing the app, and psycopg
+refuses to run async on the default ProactorEventLoop. The symptom is nasty:
+the service starts, `/healthz` returns 200, and `/readyz` 500s on the first
+database call.
+
+Both of these work, from either directory:
+
+```bash
+uvicorn backend.main:app --reload --port 8001   # from the repository root
+cd backend && uvicorn main:app --reload --port 8001
+```
+
+The second used to fail with `ModuleNotFoundError: No module named 'backend'` —
+`main.py` imports `backend.*` absolutely, which needs the *parent* of
+`backend/` on the path. It now puts the repository root there itself when it is
+loaded as a top-level module.
+
 ---
 
 ## Common commands

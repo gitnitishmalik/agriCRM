@@ -137,3 +137,51 @@ async def test_area_converts_to_hectares_exactly():
     assert to_hectares(Decimal(5), "hectare") == Decimal("5.0000")
     # A unit with no area meaning converts to nothing, rather than to zero.
     assert to_hectares(Decimal(3), "each") is None
+
+
+async def test_the_app_imports_from_inside_the_backend_directory():
+    """
+    🔴 `uvicorn main:app` run from inside `backend/` must work.
+
+    Everything in `main.py` imports `backend.*` absolutely, which needs the
+    *parent* of `backend/` on `sys.path`. From the repository root that is
+    already true. From inside `backend/` — the obvious thing to type when you
+    are sitting in the directory — `sys.path[0]` is `backend/` itself and the
+    first absolute import dies with `ModuleNotFoundError: No module named
+    'backend'`.
+
+    The traceback names the failing import and not the working directory, so it
+    reads like a broken installation rather than a `cd`. It was reported twice.
+    `main.py` puts the repository root on the path when `__package__` is empty;
+    this asserts that guard still works, in a subprocess because the
+    alternative is mutating `sys.path` inside the suite.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import anyio
+
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    # In a worker thread rather than `asyncio.create_subprocess_exec`. On
+    # Windows `backend/__init__.py` installs the selector event-loop policy so
+    # psycopg can run async at all, and asyncio's subprocess support requires
+    # the proactor loop it replaces — so the async spelling deadlocks on the
+    # exact platform this test exists for.
+    def _probe() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-c", "import main; assert main.app is not None; print('ok')"],
+            cwd=backend_dir,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+
+    result = await anyio.to_thread.run_sync(_probe)
+
+    assert result.returncode == 0, (
+        "`uvicorn main:app` from inside backend/ is broken again. The guard at "
+        "the top of backend/main.py is what keeps it working. " + result.stderr[-2000:]
+    )

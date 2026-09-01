@@ -20,14 +20,36 @@ traffic can be moved one route at a time rather than in a single cutover.
 from __future__ import annotations
 
 import logging
+import sys
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+
+# 🔴 Make this module importable from either directory.
+#
+# Everything below imports `backend.*` absolutely, which needs the *parent* of
+# `backend/` on `sys.path`. Run from the repository root — `uvicorn
+# backend.main:app`, or `make run` — and that is already true. Run it from
+# inside `backend/` as `uvicorn main:app`, which is the obvious thing to type
+# when you are sitting in the directory, and `sys.path[0]` is `backend/`
+# itself: `main` imports, then dies on `ModuleNotFoundError: No module named
+# 'backend'` at the first absolute import.
+#
+# The traceback names the failing import rather than the working directory, so
+# it reads like a broken installation instead of a `cd`. Three lines here cost
+# nothing and remove the failure mode entirely.
+#
+# `__package__` is empty exactly when this was loaded as a top-level module
+# (the broken case) and is "backend" when imported properly, so the fix is
+# inert on every correct invocation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend.admin.billing_views import router as admin_billing_router
 from backend.admin.router import router as admin_router
