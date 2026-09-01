@@ -24,8 +24,12 @@ export class ApiError extends Error {
     message: string,
     readonly details: Record<string, string[]> = {},
     readonly requestId: string | null = null,
+    // Carries the original failure when this wraps one — a `fetch` TypeError
+    // from a request that never reached a server. Keeping it means the console
+    // still shows what actually broke.
+    options?: ErrorOptions,
   ) {
-    super(message)
+    super(message, options)
     this.name = 'ApiError'
   }
 
@@ -180,11 +184,34 @@ async function request(path: string, options: RequestOptions = {}): Promise<Resp
     if (body !== undefined && !isMultipart) h.set('Content-Type', 'application/json')
     if (auth && accessToken) h.set('Authorization', `Bearer ${accessToken}`)
 
-    return fetch(`${BASE}${path}`, {
-      ...rest,
-      headers: h,
-      body: body === undefined ? undefined : isMultipart ? body : JSON.stringify(body),
-    })
+    try {
+      return await fetch(`${BASE}${path}`, {
+        ...rest,
+        headers: h,
+        body: body === undefined ? undefined : isMultipart ? body : JSON.stringify(body),
+      })
+    } catch (cause) {
+      // 🔴 `fetch` rejects with a bare TypeError when the request never
+      // reaches a server — the API stopped, the dev proxy has nothing to
+      // forward to, the machine is offline. Every screen here renders
+      // `ApiError` and ignores anything else, so an unconverted TypeError is a
+      // form that fails with no message at all next to it: the user retypes a
+      // correct password and watches nothing happen.
+      //
+      // Status 0 because there was no response to take one from, and it must
+      // not collide with a real 401 the sign-in screen words differently.
+      throw new ApiError(
+        0,
+        'network_error',
+        'Could not reach the API. If you are running this locally, start the ' +
+          'backend with `python -m backend.run` from the repository root — and ' +
+          'note that uvicorn started by hand listens on port 8000, while the ' +
+          'dev server proxies to 8001.',
+        {},
+        null,
+        { cause },
+      )
+    }
   }
 
   let res = await send()

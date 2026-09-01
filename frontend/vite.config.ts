@@ -28,8 +28,42 @@ function refuseBypassInProductionBuilds(command: string, mode: string) {
   )
 }
 
+/**
+ * Where the API is. One binding, used by the proxy and by the startup check,
+ * so the two cannot disagree about what they are talking to.
+ */
+const apiTarget = process.env.VITE_DEV_API ?? 'http://127.0.0.1:8001'
+
+/**
+ * 🔴 Say at startup that the API is down, rather than at the first click.
+ *
+ * The dev server starts happily with no backend, so the first sign that
+ * anything is wrong is a failed sign-in — by which point the natural reading is
+ * "my password is wrong" or "the app is broken", not "I did not start the other
+ * process". One probe at boot moves that discovery to the moment it is cheap.
+ *
+ * Never fatal. Working on the UI against a stopped API is a legitimate thing to
+ * be doing, and a dev server that refuses to start would be worse than the
+ * problem it reports.
+ */
+function warnIfApiIsDown() {
+  const url = `${apiTarget}/api/v1/healthz/`
+  const timeout = AbortSignal.timeout(2500)
+
+  fetch(url, { signal: timeout }).catch(() => {
+    console.warn(
+      `\n  Note: nothing is answering at ${apiTarget}.\n` +
+        '  Every /api request will fail until you start it:\n' +
+        '      python -m backend.run          (or: make run)\n' +
+        '  uvicorn started by hand defaults to port 8000 — pass --port 8001.\n',
+    )
+  })
+}
+
 export default defineConfig(({ command, mode }) => {
   refuseBypassInProductionBuilds(command, mode)
+
+  if (command === 'serve') warnIfApiIsDown()
 
   return {
     // Vite 8 did not pick up postcss.config.js in this project; wiring the
@@ -44,8 +78,59 @@ export default defineConfig(({ command, mode }) => {
         // 🔴 8001 is the FastAPI service. Every endpoint the frontend calls is
         // served by the flat `backend/` package.
         '/api': {
-          target: process.env.VITE_DEV_API ?? 'http://127.0.0.1:8001',
+          target: apiTarget,
           changeOrigin: true,
+
+          /**
+           * 🔴 Turn "the API is not running" into a sentence that says so.
+           *
+           * Without this, a stopped backend surfaces as `ECONNREFUSED` repeated
+           * once per request in the terminal, and as a bare **Bad Gateway** in
+           * the UI. Neither names the cause, neither names the fix, and the
+           * most common cause by far is the most boring one: uvicorn started on
+           * its default port 8000 while this proxy points at 8001.
+           *
+           * So: answer with a JSON 503 in the shape the client already parses,
+           * carrying the command that fixes it — and log the explanation once
+           * rather than a stack trace per attempt.
+           */
+          configure: (proxy) => {
+            let explained = false
+
+            proxy.on('error', (_error, _request, response) => {
+              if (!explained) {
+                explained = true
+                console.error(
+                  `\n  The API is not answering on ${apiTarget}.\n\n` +
+                    '  Start it from the repository root:\n' +
+                    '      python -m backend.run          (or: make run)\n\n' +
+                    '  If you started uvicorn by hand it defaults to port 8000,\n' +
+                    '  which this proxy does not use. Pass --port 8001.\n' +
+                    `  To point the UI elsewhere: VITE_DEV_API=http://127.0.0.1:8000\n`,
+                )
+              }
+
+              // `response` is a ServerResponse for a request, and a Socket when
+              // the failure was on an upgrade. Only the former can be answered.
+              if (!('writeHead' in response) || response.headersSent) return
+
+              response.writeHead(503, { 'Content-Type': 'application/json' })
+              response.end(
+                JSON.stringify({
+                  error: {
+                    code: 'api_unreachable',
+                    message:
+                      `The API is not running at ${apiTarget}. Start it with ` +
+                      '`python -m backend.run` from the repository root. If you ' +
+                      'started uvicorn manually, it defaults to port 8000 — pass ' +
+                      '--port 8001.',
+                    details: {},
+                    request_id: null,
+                  },
+                }),
+              )
+            })
+          },
         },
       },
     },
