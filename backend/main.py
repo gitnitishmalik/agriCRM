@@ -57,6 +57,7 @@ from backend.routers import (
     people,
     receivables,
 )
+from backend.routing import register_slash_aliases
 
 logger = logging.getLogger("api")
 
@@ -194,6 +195,43 @@ async def validation_error(request: Request, error: RequestValidationError):
         content=_error_payload(request, "validation_error", "Invalid request.", details),
     )
 
+
+# 🔴 Both slash forms for every API route, before any of them is included.
+#
+# Not a convenience. A trailing-slash mismatch is answered with a 307 to an
+# absolute URL, browsers drop `Authorization` across origins, and the client
+# then loops on token refresh against what looks like an expired session. This
+# was fixed by hand on five routes; twenty-four more arrived afterwards without
+# it, because the test that walks every route stopped seeing any of them when
+# `include_router` became lazy. Registering here makes it structural — a new
+# router cannot forget.
+#
+# The console is deliberately absent: it is same-origin and cookie-based, and a
+# cookie survives the redirect that an Authorization header does not.
+for _api_router in (
+    auth.router,
+    organisations.router,
+    organisations_write.router,
+    billing.router,
+    billing_write.router,
+    billing_entities.router,
+    billing_render.router,
+    billing_extract.router,
+    geography.router,
+    farmers.router,
+    people.router,
+    imports.router,
+    dataquality.router,
+    copilot.router,
+    invoice_checks.router,
+    receivables.router,
+    deliveries.router,
+    payment_webhooks.router,
+    gstin.router,
+    inbound.router,
+    compliance.router,
+):
+    register_slash_aliases(_api_router)
 
 app.include_router(auth.router)
 app.include_router(organisations.router)

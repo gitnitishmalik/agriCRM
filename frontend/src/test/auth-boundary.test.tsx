@@ -20,6 +20,22 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+/**
+ * 🔴 `pointerEventsCheck: 0`, and only for that check.
+ *
+ * Radix applies `pointer-events: none` while a menu is opening or closing and
+ * lifts it when the animation ends. jsdom runs no animations, so the style can
+ * still be on the trigger when user-event asserts against it — and the suite
+ * failed on the account-menu test in roughly two runs out of five, on code
+ * that works in a browser. A test that fails at random is worse than no test:
+ * it trains everyone to re-run it.
+ *
+ * Nothing else is relaxed. The click still has to find the element by role,
+ * still has to open the menu, and still has to navigate — which is the
+ * regression the test exists for.
+ */
+const setupUser = () => userEvent.setup({ pointerEventsCheck: 0 })
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -133,7 +149,7 @@ describe('the account menu', () => {
     tokens.set('access-token', 'refresh-token')
 
     const { AppShell } = await import('../layout/AppShell')
-    const user = userEvent.setup()
+    const user = setupUser()
 
     withProviders(
       <Routes>
@@ -158,7 +174,7 @@ describe('the account menu', () => {
     tokens.set('access-token', 'refresh-token')
 
     const { AppShell } = await import('../layout/AppShell')
-    const user = userEvent.setup()
+    const user = setupUser()
 
     withProviders(
       <Routes>

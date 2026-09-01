@@ -79,15 +79,30 @@ async def test_every_route_is_mfa_gated_unless_it_says_why():
     someone remove it, and did they say why".
     """
     from backend.main import app
+    from backend.routing import iter_routes
 
     unguarded: list[str] = []
 
-    for route in app.routes:
+    # 🔴 A slash alias is the *same endpoint function* as the route it aliases,
+    # registered under the other trailing-slash form by
+    # `routing.register_slash_aliases`. So an exemption declared for the base
+    # route covers its alias, and resolving that here is what stops PRE_MFA
+    # needing a second hand-written entry per route — the kind of list that
+    # goes stale silently.
+    #
+    # Resolved by endpoint identity, never by the `_alias` name suffix: a name
+    # is something a person types, and a route called `something_alias` must not
+    # be able to inherit an exemption it was never granted.
+    exempt_endpoints = {
+        route.endpoint for route in iter_routes(app) if getattr(route, "name", None) in PRE_MFA
+    }
+
+    for route in iter_routes(app):
         name = getattr(route, "name", None)
         path = getattr(route, "path", "")
         if not name or not path.startswith("/api/v1"):
             continue
-        if name in PRE_MFA:
+        if name in PRE_MFA or route.endpoint in exempt_endpoints:
             continue
 
         # `require_verified_user` is the gate. Its presence in the dependency
@@ -372,10 +387,11 @@ async def test_every_admin_route_requires_a_session():
     import inspect
 
     from backend.main import app
+    from backend.routing import iter_routes
 
     unguarded: list[str] = []
 
-    for route in app.routes:
+    for route in iter_routes(app):
         name = getattr(route, "name", None)
         path = getattr(route, "path", "")
         if not name or not path.startswith("/admin"):

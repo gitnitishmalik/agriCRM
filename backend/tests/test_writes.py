@@ -473,11 +473,12 @@ async def test_no_api_route_redirects_on_a_trailing_slash(client, biller):
     hold it rather than trusting the five that were fixed by hand.
     """
     from backend.main import app
+    from backend.routing import iter_routes
 
     headers = await _headers(client, biller)
     offenders: list[str] = []
 
-    for route in app.routes:
+    for route in iter_routes(app):
         path = getattr(route, "path", "")
         methods = getattr(route, "methods", set()) or set()
         if not path.startswith("/api/v1") or "GET" not in methods:
