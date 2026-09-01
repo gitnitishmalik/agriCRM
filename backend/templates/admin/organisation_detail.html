@@ -1,0 +1,212 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ org.name }}{% endblock %}
+{% block content %}
+
+<header class="page">
+  <h1>{{ org.name }}</h1>
+  <span class="sub">{{ status_chip(org.quality_tier) }} {{ org.type.replace('_', ' ') }}</span>
+</header>
+<p class="lede">
+  Every field with its provenance beside it: what it says now, which source
+  said so, at what confidence, and when. A registry you cannot interrogate that
+  way is a spreadsheet with a login.
+</p>
+
+{% if org.is_deleted %}
+<div class="notice warn">
+  This record is soft-deleted{% if org.merged_into_id %}, merged into
+  <a href="/admin/organisations/{{ org.merged_into_id }}">another organisation</a>{% endif %}.
+  Nothing is hard-deleted here, so it stays resolvable.
+</div>
+{% endif %}
+
+{% set unresolved = contradictions | selectattr('resolved_at', 'none') | list %}
+{% if unresolved %}
+<div class="notice bad">
+  <strong>{{ unresolved | length }}</strong> unresolved contradiction{{ '' if unresolved | length == 1 else 's' }}
+  on this record — a source proposed a value that did not beat the stored one by
+  the 0.15 confidence margin, so it was written there instead of winning.
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Record</h2>
+  <div class="body">
+    <dl class="kv">
+      <dt>Name</dt><dd>{{ org.name }}</dd>
+      {% if org.name_local %}<dt>Name (local)</dt><dd>{{ org.name_local }}</dd>{% endif %}
+      {% if org.short_name %}<dt>Short name</dt><dd>{{ org.short_name }}</dd>{% endif %}
+      <dt>Type</dt><dd>{{ org.type.replace('_', ' ') }}</dd>
+      <dt>Legal form</dt><dd>{{ org.legal_form.replace('_', ' ') }}</dd>
+      <dt>Status</dt><dd>{{ status_chip(org.status) }}</dd>
+      <dt>CIN</dt><dd><code>{{ org.cin or '—' }}</code></dd>
+      <dt>GSTIN</dt><dd><code>{{ org.gstin | mask_gstin }}</code></dd>
+      {% if org.registration_date %}
+      <dt>Registered</dt><dd>{{ org.registration_date | when(with_time=False) }}</dd>
+      {% endif %}
+      <dt>State</dt><dd>{{ state.name if state else '—' }}</dd>
+      <dt>District</dt><dd>{{ district.name if district else '—' }}</dd>
+      {% if org.address_line1 %}<dt>Address</dt><dd>{{ org.address_line1 }}</dd>{% endif %}
+      <dt>Quality tier</dt><dd>{{ status_chip(org.quality_tier) }} · completeness {{ org.completeness_score }}</dd>
+      <dt>Created</dt><dd>{{ org.created_at | when }}</dd>
+      <dt>Updated</dt><dd>{{ org.updated_at | when }}</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Billing contact
+    {% if not may_unmask %}<span class="muted" style="font-weight:400">· masked (🔴 R9)</span>{% endif %}
+  </h2>
+  <div class="body">
+    <dl class="kv">
+      <dt>Contact name</dt><dd>{{ org.billing_contact_name or '—' }}</dd>
+      <dt>Email</dt><dd>{{ org.billing_email | mask_email(unmask=may_unmask) }}</dd>
+      <dt>Phone</dt><dd>{{ org.billing_phone | mask_phone(unmask=may_unmask) }}</dd>
+      <dt>Opted out</dt>
+      <dd>
+        {% if org.billing_opt_out %}
+          {{ chip('opted out', 'bad') }} {{ org.billing_opt_out_at | when }}
+          <div class="muted">An opt-out outranks a send, and is re-checked at dispatch.</div>
+        {% else %}{{ chip('contactable', 'ok') }}{% endif %}
+      </dd>
+      <dt>GSTIN policy</dt>
+      <dd>
+        {{ org.gstin_policy }}
+        <div class="muted">
+          {% if org.gstin_policy == 'require_current' %}
+            A stale or unavailable live verification blocks issue for this customer.
+          {% else %}
+            A stale verification warns; it does not block.
+          {% endif %}
+        </div>
+      </dd>
+    </dl>
+    {% if not may_unmask %}
+    <p class="muted" style="margin-bottom:0">
+      Contact details are masked by default. Unmasking needs the
+      <code>contact.view_full</code> capability and writes
+      <code>audit.data_access_log</code> — a console that renders every phone
+      number has made that log meaningless.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Field provenance · where each value came from</h2>
+  {% if current %}
+  <div class="scroll"><table>
+    <thead>
+      <tr><th>Field</th><th>Current value</th><th>Source</th><th class="num">Confidence</th>
+          <th>Collected</th><th>Reference</th><th>Superseded</th></tr>
+    </thead>
+    <tbody>
+      {% for field_name, row in current | dictsort %}
+      <tr>
+        <td class="nowrap"><code>{{ field_name }}</code></td>
+        <td>{{ row.value_text | truncate_text(60) }}</td>
+        <td>
+          {% if row.source %}
+            <span class="chip {{ 'ok' if row.source.is_approved else 'bad' }}">{{ row.source.code }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">{{ confidence_chip(row.confidence) }}</td>
+        <td class="muted nowrap">{{ row.collected_at | ago }}</td>
+        <td class="muted">
+          {% if row.source_reference %}
+            <a href="{{ row.source_reference }}" target="_blank" rel="noopener noreferrer">
+              {{ row.source_reference | truncate_text(38) }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td class="muted">
+          {% set past = history.get(field_name, []) %}
+          {% if past %}{{ past | length }} earlier{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="pager">
+    Confidence: field-verified 0.95 · scraped registry 0.60. An incoming value
+    must beat the stored one by 0.15 or it writes a contradiction instead.
+  </div>
+  {% else %}
+  <div class="empty">
+    No provenance recorded — this record was entered by hand rather than
+    collected, or predates provenance tracking.
+  </div>
+  {% endif %}
+</div>
+
+{% if history %}
+<div class="card">
+  <h2>Superseded values</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Field</th><th>Was</th><th>Source</th><th class="num">Confidence</th><th>Collected</th></tr></thead>
+    <tbody>
+      {% for field_name, rows in history | dictsort %}
+        {% for row in rows %}
+        <tr>
+          <td class="nowrap"><code>{{ field_name }}</code></td>
+          <td class="muted">{{ row.value_text | truncate_text(60) }}</td>
+          <td>{% if row.source %}<span class="chip mute">{{ row.source.code }}</span>{% else %}—{% endif %}</td>
+          <td class="num">{{ confidence_chip(row.confidence) }}</td>
+          <td class="muted nowrap">{{ row.collected_at | when }}</td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if contradictions %}
+<div class="card">
+  <h2>Contradictions</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Field</th><th>Stored</th><th>Incoming</th><th>Detected</th><th>Resolution</th></tr></thead>
+    <tbody>
+      {% for c in contradictions %}
+      <tr>
+        <td class="nowrap"><code>{{ c.field_name }}</code></td>
+        <td>{{ c.value_a | truncate_text(40) }}</td>
+        <td>{{ c.value_b | truncate_text(40) }}</td>
+        <td class="muted nowrap">{{ c.detected_at | ago }}</td>
+        <td>
+          {% if c.resolved_at %}
+            {{ chip('resolved', 'ok') }} <span class="muted">{{ c.resolution | truncate_text(60) }}</span>
+          {% else %}
+            {{ chip('open', 'bad') }} <a href="/admin/contradictions/">Adjudicate</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Invoices</h2>
+  {% if invoices %}
+  <div class="scroll"><table>
+    <thead><tr><th>Number</th><th>Date</th><th>Status</th><th class="num">Total</th><th class="num">Outstanding</th></tr></thead>
+    <tbody>
+      {% for inv in invoices %}
+      <tr>
+        <td><a href="/admin/invoices/{{ inv.id }}">{{ inv.invoice_no or '— draft —' }}</a></td>
+        <td class="nowrap">{{ inv.invoice_date | when(with_time=False) }}</td>
+        <td>{{ status_chip(inv.status) }}</td>
+        <td class="num">{{ inv.total_value | inr }}</td>
+        <td class="num">{{ inv.amount_outstanding | inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty">This customer has never been invoiced.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

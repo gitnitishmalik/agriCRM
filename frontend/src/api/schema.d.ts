@@ -14,17 +14,18 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Log in
-         * @description Returns a token pair plus the user's role, territory and MFA state.
+         * Login
+         * @description Sign in. Issues a pair either way; a privileged role's opens nothing until
+         *     the second factor is verified.
          */
-        post: operations["auth_login_create"];
+        post: operations["login_api_v1_auth_login__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/logout/": {
+    "/api/v1/auth/refresh/": {
         parameters: {
             query?: never;
             header?: never;
@@ -34,10 +35,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Log out
-         * @description Blacklist the refresh token. Access tokens expire on their own in 15m.
+         * Refresh
+         * @description 🔴 Copies the MFA claims forward; it does not mint them.
+         *
+         *     Otherwise this is the way around the second factor: sign in, ignore the
+         *     MFA screen, refresh once, hold a satisfied token having proved one factor.
          */
-        post: operations["auth_logout_create"];
+        post: operations["refresh_api_v1_auth_refresh__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -52,10 +56,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Current user
-         * @description Current user, role, permissions and territory.
+         * Me
+         * @description The caller's own row. Reachable before MFA by design — the client cannot
+         *     know to redirect to the second-factor screen until it has read this.
          */
-        get: operations["auth_me_retrieve"];
+        get: operations["me_api_v1_auth_me__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -74,14 +79,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Begin MFA enrolment
+         * Mfa Enrol
          * @description Begin TOTP enrolment.
          *
          *     The device is created unconfirmed and stays that way until the user proves
-         *     they can read a code off it, which /mfa/verify/ handles. Returns a QR code
-         *     to scan and the raw secret for anyone entering it by hand.
+         *     they can read a code off it. 🔴 Checking only confirmed devices at verify
+         *     time made enrolment impossible to finish — nothing else ever flips the
+         *     flag — which was a real bug in the Django service before this migration.
          */
-        post: operations["auth_mfa_enrol_create"];
+        post: operations["mfa_enrol_api_v1_auth_mfa_enrol__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -98,13 +104,35 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Verify MFA code
-         * @description Verify a TOTP code and re-issue a token pair with mfa_satisfied=true.
+         * Mfa Verify
+         * @description Verify a code and re-issue the pair with `mfa_satisfied=true`.
          *
-         *     The re-issue matters: without it the client keeps a token whose claim says
-         *     MFA is outstanding, and every protected call keeps failing.
+         *     The re-issue matters: without it the client keeps a token whose claim still
+         *     says MFA is outstanding, and every protected call keeps failing.
          */
-        post: operations["auth_mfa_verify_create"];
+        post: operations["mfa_verify_api_v1_auth_mfa_verify__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Blacklist the refresh token. Access tokens expire on their own in 15m.
+         *
+         *     Idempotent: a double-tapped sign-out button is not an error condition.
+         */
+        post: operations["logout_api_v1_auth_logout__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -121,45 +149,133 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Change password
-         * @description Change password and revoke every outstanding session (Doc 12 §13).
+         * Password Change
+         * @description Change the password and revoke every outstanding session (Doc 12 §13).
+         *
+         *     🔴 Depends on `CurrentUser`, not `AnyUser` — deliberately absent from
+         *     PRE_MFA. Someone holding a stolen password and nothing else must not be
+         *     able to replace it with one they chose.
          */
-        post: operations["auth_password_change_create"];
+        post: operations["password_change_api_v1_auth_password_change__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/refresh/": {
+    "/api/v1/organisations/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Organisation List
+         * @description The register.
+         *
+         *     Filters are named parameters rather than a free-form query string. FastAPI
+         *     rejects an unknown one with a 422 by default, which preserves the rule the
+         *     Django service enforced by hand: a typo'd filter that silently does
+         *     nothing is how someone exports the whole registry believing they exported
+         *     one district.
+         */
+        get: operations["organisation_list_api_v1_organisations__get"];
         put?: never;
         /**
-         * @description Takes a refresh type JSON web token and returns an access type JSON web
-         *     token if the refresh token is valid.
+         * Organisation Create
+         * @description Add an organisation, refusing a likely duplicate.
+         *
+         *     🔴 409 with the candidates attached, rather than a silent create. A
+         *     register that quietly accepts the same FPO twice is a register nobody can
+         *     count, and the second copy is discovered months later by a field agent
+         *     visiting the same people twice.
          */
-        post: operations["auth_refresh_create"];
+        post: operations["organisation_create_api_v1_organisations__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/blocks/": {
+    "/api/v1/organisations/{organisation_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List blocks / tehsils, optionally within one district */
-        get: operations["blocks_list"];
+        /**
+         * Organisation Detail
+         * @description One organisation.
+         *
+         *     Resolves soft-deleted rows too, so a stored id never turns into a 404 that
+         *     looks like the id was wrong — the tombstone and its state are the answer.
+         */
+        get: operations["organisation_detail_api_v1_organisations__organisation_id__get"];
+        /** Organisation Replace */
+        put: operations["organisation_replace_api_v1_organisations__organisation_id__put"];
+        post?: never;
+        /**
+         * Organisation Delete
+         * @description 🔴 Soft delete. Nothing in this system is hard-deleted (CLAUDE.md).
+         *
+         *     The row keeps its id and stays resolvable on the detail route, so a stored
+         *     reference does not turn into a 404 that looks like the id was wrong.
+         */
+        delete: operations["organisation_delete_api_v1_organisations__organisation_id__delete"];
+        options?: never;
+        head?: never;
+        /** Organisation Update */
+        patch: operations["organisation_update_api_v1_organisations__organisation_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoices/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoice List
+         * @description The register.
+         *
+         *     🔴 An unknown query parameter is a 400, not a shrug. FastAPI ignores
+         *     extras by default; `deps.reject_unknown_filters` reinstates the rule the
+         *     Django service enforced by hand, because a filter that silently does
+         *     nothing is how someone exports the whole register believing they exported
+         *     one customer.
+         */
+        get: operations["invoice_list_api_v1_invoices__get"];
+        put?: never;
+        /**
+         * Invoice Create
+         * @description Create a draft. A number is allocated at issue, never here.
+         */
+        post: operations["invoice_create_api_v1_invoices__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/summary/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoice Summary
+         * @description Totals across whatever the register is currently filtered to.
+         *
+         *     🔴 Cancelled, discarded and draft invoices are excluded from every figure.
+         *     They are documents that exist and are not owed, and counting them makes a
+         *     receivables number meaningless.
+         */
+        get: operations["invoice_summary_api_v1_invoices_summary__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -168,49 +284,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/blocks/{id}/": {
+    "/api/v1/invoices/{invoice_id}/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Fetch one block by id */
-        get: operations["blocks_retrieve"];
-        put?: never;
+        /** Invoice Detail */
+        get: operations["invoice_detail_api_v1_invoices__invoice_id___get"];
+        /**
+         * Invoice Replace
+         * @description Edit a draft.
+         *
+         *     🔴 Only a draft. Once issued the document exists in someone else's
+         *     accounts, and changing it there is not an edit — it is a different
+         *     document wearing the same number.
+         */
+        put: operations["invoice_replace_api_v1_invoices__invoice_id___put"];
         post?: never;
-        delete?: never;
+        /**
+         * Invoice Delete
+         * @description 🔴 Only a draft. An issued invoice is cancelled, with a reason, and keeps
+         *     its number — a document that exists in someone's accounts cannot be made
+         *     not to have existed.
+         */
+        delete: operations["invoice_delete_api_v1_invoices__invoice_id___delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Invoice Update
+         * @description Edit a draft.
+         *
+         *     🔴 Only a draft. Once issued the document exists in someone else's
+         *     accounts, and changing it there is not an edit — it is a different
+         *     document wearing the same number.
+         */
+        patch: operations["invoice_update_api_v1_invoices__invoice_id___patch"];
         trace?: never;
     };
-    "/api/v1/crops/": {
+    "/api/v1/states/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List crops */
-        get: operations["crops_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/crops/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Fetch one crop by id */
-        get: operations["crops_retrieve"];
+        /**
+         * State List
+         * @description All 36 states and union territories. Small enough to return whole.
+         */
+        get: operations["state_list_api_v1_states__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -226,8 +350,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List districts, optionally within one state */
-        get: operations["districts_list"];
+        /**
+         * District List
+         * @description Districts, optionally within one state.
+         *
+         *     ~780 rows nationally, so an unscoped list is allowed here — unlike
+         *     villages. The `state` filter exists because that is how the UI asks.
+         */
+        get: operations["district_list_api_v1_districts__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -236,24 +366,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/districts/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Fetch one district by id */
-        get: operations["districts_retrieve"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/healthz/": {
+    "/api/v1/blocks/": {
         parameters: {
             query?: never;
             header?: never;
@@ -261,131 +374,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Liveness probe
-         * @description Unauthenticated liveness probe for the ALB.
+         * Block List
+         * @description ~7,000 blocks nationally. Scoped by district in practice.
          */
-        get: operations["healthz_retrieve"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organisations/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List organisations
-         * @description Soft-deleted rows are excluded unless `include_deleted=true`. An unsupported filter is a 400 rather than a silently ignored parameter.
-         */
-        get: operations["organisations_list"];
-        put?: never;
-        /**
-         * Create an organisation
-         * @description Returns **409** with candidate matches when the name looks like an organisation already in the registry for that district. Pass `?force=true` to create anyway — the override is recorded on the row.
-         */
-        post: operations["organisations_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organisations/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Fetch one organisation
-         * @description Includes the profile implied by the type discriminator. Resolves soft-deleted rows too, so a stored id never turns into a 404 that looks like the id was wrong.
-         */
-        get: operations["organisations_retrieve"];
-        /** Replace an organisation */
-        put: operations["organisations_update"];
-        post?: never;
-        /**
-         * Soft delete an organisation
-         * @description Sets `is_deleted`; the row and its id continue to resolve.
-         */
-        delete: operations["organisations_destroy"];
-        options?: never;
-        head?: never;
-        /** Update part of an organisation */
-        patch: operations["organisations_partial_update"];
-        trace?: never;
-    };
-    "/api/v1/organisations/bulk-assign/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reassign the owner of many organisations */
-        post: operations["organisations_bulk_assign_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organisations/check-duplicates/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check a name for likely duplicates
-         * @description Live duplicate check for a create form. Same scorer the create endpoint and the admin use, so a client can show the warning before the user has filled in the rest of the record.
-         */
-        post: operations["organisations_check_duplicates_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/states/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List states and union territories */
-        get: operations["states_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/states/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Fetch one state by id */
-        get: operations["states_retrieve"];
+        get: operations["block_list_api_v1_blocks__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -402,10 +394,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List villages within a district, block or pincode
-         * @description 🔴 Requires `district`, `block` or `pincode`. `ref.village` holds roughly 660,000 rows; an unscoped list of it is a sequential scan answering a question nobody asked.
+         * Village List
+         * @description Villages, and only within a scope.
+         *
+         *     🔴 A district, block or pincode is required. `ref.village` reaches ~660k
+         *     rows; refusing is the honest answer, and it is a 400 rather than an empty
+         *     list so the caller learns what to send rather than concluding the table is
+         *     empty.
          */
-        get: operations["villages_list"];
+        get: operations["village_list_api_v1_villages__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -414,15 +411,1691 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/villages/{id}/": {
+    "/api/v1/states/{state_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Fetch one village by id */
-        get: operations["villages_retrieve"];
+        /** State Detail */
+        get: operations["state_detail_api_v1_states__state_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/districts/{district_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** District Detail */
+        get: operations["district_detail_api_v1_districts__district_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blocks/{block_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Block Detail */
+        get: operations["block_detail_api_v1_blocks__block_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/villages/{village_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Village Detail
+         * @description One village by id.
+         *
+         *     Unlike the list route this needs no scope — resolving a single stored id is
+         *     an index lookup, not the sequential scan the list guard exists to prevent.
+         */
+        get: operations["village_detail_api_v1_villages__village_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crops/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Crop List
+         * @description Reference crops. A short list; returned whole.
+         */
+        get: operations["crop_list_api_v1_crops__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crops/{crop_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Crop Detail */
+        get: operations["crop_detail_api_v1_crops__crop_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/check-duplicates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Organisation Check Duplicates
+         * @description What creating this name would collide with.
+         *
+         *     The same call the create path makes, exposed so a form can warn before the
+         *     user has typed everything. Two implementations of "is this a duplicate"
+         *     would eventually disagree, and the one the user saw would not be the one
+         *     that blocked them.
+         */
+        post: operations["organisation_check_duplicates_api_v1_organisations_check_duplicates__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/bulk-assign/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Organisation Bulk Assign
+         * @description Reassign ownership of many organisations at once.
+         *
+         *     Live rows only — a soft-deleted record has no owner to reassign, and
+         *     silently including tombstones would inflate the count the caller is told.
+         */
+        post: operations["organisation_bulk_assign_api_v1_organisations_bulk_assign__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farmers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Farmer List */
+        get: operations["farmer_list_api_v1_farmers__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farmers/{state_id}/{farmer_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Farmer Detail */
+        get: operations["farmer_detail_api_v1_farmers__state_id___farmer_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farmers/import-csv/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Farmer Import Csv */
+        post: operations["farmer_import_csv_api_v1_farmers_import_csv__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/people/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Person List
+         * @description The people register. **Names and posts only — no contact values.**
+         *
+         *     Filters are declared parameters and `StrictQuery` rejects anything else
+         *     with a 400: a typo'd filter that silently does nothing is how someone
+         *     exports the whole register believing they exported one district.
+         */
+        get: operations["person_list_api_v1_people__get"];
+        put?: never;
+        /**
+         * Person Create
+         * @description Record a person.
+         *
+         *     🔴 The `source_id` gate is the whole point of this endpoint. R4 permits
+         *     personal data through four routes, and `require_pii_source` is where that
+         *     sentence becomes something a request either passes or fails.
+         */
+        post: operations["person_create_api_v1_people__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/people/{person_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Person Detail
+         * @description One person, with every post they have held and every way to reach them.
+         *
+         *     🔴 `unmask=true` is checked *before* the response is assembled and is
+         *     logged whether or not the person turns out to have any contact points. A
+         *     caller who asks to see personal data has asked, and that is the fact the
+         *     audit log records.
+         */
+        get: operations["person_detail_api_v1_people__person_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Person Update
+         * @description Correct a person's details. Provenance and tier are not editable here.
+         */
+        patch: operations["person_update_api_v1_people__person_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/people/{person_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Person Role Create
+         * @description Record that this person holds a post at an organisation.
+         *
+         *     🔴 An open role is not replaced by a new one — both are written, and the
+         *     old one is closed through `PATCH .../roles/{id}` with a date. That is what
+         *     lets the register answer "who was chairman in March 2025" afterwards.
+         */
+        post: operations["person_role_create_api_v1_people__person_id__roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/people/{person_id}/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Person Role Close
+         * @description End a post by dating it. There is no delete.
+         *
+         *     The DDL's CHECK requires `valid_to >= valid_from`; a date before the start
+         *     is rejected there rather than re-implemented here.
+         */
+        patch: operations["person_role_close_api_v1_people__person_id__roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/people/{person_id}/contact-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Person Contact List
+         * @description This person's contact points, masked unless the capability says otherwise.
+         */
+        get: operations["person_contact_list_api_v1_people__person_id__contact_points_get"];
+        put?: never;
+        /**
+         * Person Contact Create
+         * @description Record a way to reach this person.
+         *
+         *     🔴 Two gates, both R4. The source must be one personal data may arrive
+         *     through, *and* — because this is a named individual's number rather than
+         *     an office line — the check is not skippable by writing the row against the
+         *     organisation instead: that path is a different endpoint with a different
+         *     meaning.
+         *
+         *     The value is normalised to E.164 before storage and a value that will not
+         *     normalise is rejected rather than guessed at. A number stored wrong
+         *     surfaces months later as an undeliverable message counted against the
+         *     WhatsApp quality rating, by which time nobody can tell which import did it.
+         */
+        post: operations["person_contact_create_api_v1_people__person_id__contact_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/people/by-organisation/{organisation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Organisation People
+         * @description Who holds which post at this organisation — the board, in other words.
+         *
+         *     No contact values. This is the endpoint a BD screen calls to show "MD:
+         *     Sunita Devi", and it is deliberately not the endpoint that would hand a
+         *     client every director's mobile in one response.
+         */
+        get: operations["organisation_people_api_v1_people_by_organisation__organisation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Create
+         * @description Land a batch: the rows, the source they came from, and who uploaded them.
+         *
+         *     🔴 R1 and R4 are both checked here rather than at commit. An operator who
+         *     has mapped thirty columns and run a dry run should not discover at the
+         *     last step that the source was never approved — and the rows should not be
+         *     landed against a source that cannot lawfully supply them in the first
+         *     place.
+         */
+        post: operations["import_create_api_v1_imports__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{batch_id}/dry-run/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Dry Run
+         * @description Run the whole pipeline and write nothing.
+         *
+         *     The transaction is not rolled back here — the request's session is, by the
+         *     caller never committing. What this endpoint guarantees is that no write
+         *     was *attempted*: `_run_pipeline(commit=False)` performs validation and
+         *     normalisation only.
+         */
+        post: operations["import_dry_run_api_v1_imports__batch_id__dry_run__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{batch_id}/legal-basis/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Legal Basis
+         * @description 🔴 R5. Record who confirmed the lawful basis, and on what evidence.
+         *
+         *     Separate from the commit on purpose. A single call that both confirmed and
+         *     committed would turn the confirmation into a parameter — something a
+         *     script sets to `true` because the endpoint demands it, rather than
+         *     something a person decided and can be asked about afterwards.
+         */
+        post: operations["import_legal_basis_api_v1_imports__batch_id__legal_basis__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{batch_id}/commit/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Commit
+         * @description Write the batch.
+         *
+         *     🔴 `require_legal_basis` is the first thing that runs. Not the second, and
+         *     not something the screen checked earlier — R5 is enforced here because
+         *     this is the only place the write actually happens.
+         */
+        post: operations["import_commit_api_v1_imports__batch_id__commit__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{batch_id}/errors/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Import Errors
+         * @description Every row that did not survive, with the original values and the reason.
+         *
+         *     Doc 06 calls this loop the one data ops uses constantly. The original row
+         *     is returned alongside the error so the file can be corrected without
+         *     cross-referencing line numbers by hand.
+         */
+        get: operations["import_errors_api_v1_imports__batch_id__errors__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Import Detail */
+        get: operations["import_detail_api_v1_imports__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/sources/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source List */
+        get: operations["source_list_api_v1_data_quality_sources__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/sources/{source_id}/approve/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Source Approve */
+        post: operations["source_approve_api_v1_data_quality_sources__source_id__approve__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/contradictions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Contradiction List */
+        get: operations["contradiction_list_api_v1_data_quality_contradictions__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality/contradictions/{contradiction_id}/resolve/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Contradiction Resolve */
+        post: operations["contradiction_resolve_api_v1_data_quality_contradictions__contradiction_id__resolve__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/issue/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Issue
+         * @description Allocate a number and freeze the document. The point of no return.
+         *
+         *     🔴 The allocation takes a row lock on the series. Two people issuing at the
+         *     same moment is exactly when a series hands out a duplicate — the unique
+         *     index would then reject the second insert, which is correct but arrives as
+         *     a 500 rather than as a queue.
+         *
+         *     🔴 **The pre-issue checks run here**, not only on the confirmation screen.
+         *     A client that never calls `/checks/`, or calls it and ignores the answer,
+         *     still cannot issue an invoice with a malformed GSTIN or a cancelled
+         *     registration — because this endpoint runs the same checks itself and
+         *     refuses on its own findings. A control that depends on a UI remembering to
+         *     ask is not a control.
+         */
+        post: operations["invoice_issue_api_v1_invoices__invoice_id__issue__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/cancel/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Cancel
+         * @description Cancel, keeping the number.
+         *
+         *     🔴 The number is burned, not returned to the series. A reason is required
+         *     here and by a database CHECK, because that is the field left blank
+         *     throughout the historical data.
+         */
+        post: operations["invoice_cancel_api_v1_invoices__invoice_id__cancel__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/payments/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Payment
+         * @description Record money received.
+         *
+         *     Status follows the money — the database trigger moves the invoice to
+         *     `part_paid` or `paid` (smoke test 20), so this does not set it. Two places
+         *     deciding what "paid" means is how a register stops agreeing with itself.
+         */
+        post: operations["invoice_payment_api_v1_invoices__invoice_id__payments__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing-entities/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Billing Entity List
+         * @description `?current=true` returns only the open row per entity.
+         */
+        get: operations["billing_entity_list_api_v1_billing_entities__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing-entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Billing Entity Detail */
+        get: operations["billing_entity_detail_api_v1_billing_entities__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/html/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Invoice Html */
+        get: operations["invoice_html_api_v1_invoices__invoice_id__html__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/pdf/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoice Pdf
+         * @description The document as PDF.
+         *
+         *     🔴 Rendered from the same HTML the `/html` route serves, never from a
+         *     second layout. Two renderers is two documents, and the one the customer
+         *     receives would not be the one anybody reviewed.
+         */
+        get: operations["invoice_pdf_api_v1_invoices__invoice_id__pdf__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Preview
+         * @description Render an invoice that does not exist yet.
+         *
+         *     Builds a detached `Invoice` — never added to the session — so a preview
+         *     cannot leave a row behind. That matters: the create screen calls this on
+         *     every keystroke.
+         */
+        post: operations["invoice_preview_api_v1_invoices_preview__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/extract/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Extract
+         * @description Read an uploaded document and return a draft the create form can load.
+         *
+         *     Every attempt is recorded in `crm.invoice_extraction`, including the
+         *     failures — a model that misread a document is something to look at later,
+         *     and a failure that leaves no trace is a failure nobody learns from.
+         */
+        post: operations["invoice_extract_api_v1_invoices_extract__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/extract/{extraction_id}/accept/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Extract Accept
+         * @description Record that a human accepted this extraction onto a draft.
+         *
+         *     🔴 What was accepted is stored beside what the model proposed. That pairing
+         *     is the evaluation set: a golden case built from a real correction is worth
+         *     more than one invented by guessing at what is hard.
+         */
+        post: operations["invoice_extract_accept_api_v1_invoices_extract__extraction_id__accept__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-copilot/proposals/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copilot Proposal Create
+         * @description Text (or a transcript) in, evidence-backed proposal out. Writes nothing.
+         *
+         *     A request naming an action the copilot must not take — issue, cancel, pay,
+         *     send, file — is refused before any provider is called, and the refusal is
+         *     recorded so the evaluation summary can count it.
+         */
+        post: operations["copilot_proposal_create_api_v1_invoice_copilot_proposals__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-copilot/proposals/{proposal_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Copilot Proposal Get */
+        get: operations["copilot_proposal_get_api_v1_invoice_copilot_proposals__proposal_id___get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-copilot/proposals/{proposal_id}/confirm/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copilot Proposal Confirm
+         * @description 🔴 A named human accepts exactly these bytes.
+         *
+         *     Idempotent: confirming twice with the same hash is the same as confirming
+         *     once. Confirming with a different hash is refused, because the draft has
+         *     moved and the diff on screen is no longer the diff being approved.
+         */
+        post: operations["copilot_proposal_confirm_api_v1_invoice_copilot_proposals__proposal_id__confirm__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-copilot/proposals/{proposal_id}/apply/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copilot Proposal Apply
+         * @description Write the confirmed patch to an unnumbered draft.
+         *
+         *     🔴 Creates or updates a *draft*, and nothing else. It does not issue, and
+         *     it re-checks the invoice's current state rather than trusting the state the
+         *     proposal remembers — between confirm and apply, somebody may have issued it.
+         */
+        post: operations["copilot_proposal_apply_api_v1_invoice_copilot_proposals__proposal_id__apply__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-copilot/proposals/{proposal_id}/reject/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copilot Proposal Reject
+         * @description Decline it. The row stays — a rejection is evidence about the model.
+         */
+        post: operations["copilot_proposal_reject_api_v1_invoice_copilot_proposals__proposal_id__reject__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-copilot/invoices/{invoice_id}/explain/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Copilot Explain Total
+         * @description "Why is this amount what it is?" — answered by arithmetic, not by a model.
+         *
+         *     🔴 Every figure here is recomputed server-side from quantity and rate. A
+         *     model may paraphrase the trace; it cannot supply a replacement number,
+         *     because the numbers never pass through one.
+         */
+        get: operations["copilot_explain_total_api_v1_invoice_copilot_invoices__invoice_id__explain__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/checks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Checks Run
+         * @description Run every deterministic check and record the run.
+         *
+         *     POST rather than GET because it writes a `crm.invoice_check_run` row — what
+         *     was known, when, and against which version of the draft. That row is the
+         *     answer to "what did we see before we issued this", and a check that leaves
+         *     no trace cannot answer it.
+         */
+        post: operations["invoice_checks_run_api_v1_invoices__invoice_id__checks__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/checks/acknowledge/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Checks Acknowledge
+         * @description Accept one non-blocking warning, recording actor, time and reason.
+         *
+         *     🔴 A blocking error cannot be acknowledged here. Accepting one would make
+         *     the severity meaningless — the point of `blocks_issue` is that no amount of
+         *     agreeing with it lets the document out. Blocking GSTIN results have their
+         *     own override, which is separately permissioned.
+         */
+        post: operations["invoice_checks_acknowledge_api_v1_invoices__invoice_id__checks_acknowledge__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/receivables/ageing/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Receivables Ageing
+         * @description Outstanding balance and ageing, derived from payment rows.
+         *
+         *     🔴 Nothing here reads a stored balance. Outstanding is `total_value` minus
+         *     the payments actually recorded (INVOICE.md §4.5) — a stored figure and a
+         *     payment ledger disagree the first time somebody backdates a receipt, and
+         *     the one people trust is the wrong one.
+         */
+        get: operations["receivables_ageing_api_v1_receivables_ageing__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/receivables/priority/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Receivables Priority
+         * @description Who to chase first, with the arithmetic that produced the order.
+         *
+         *     🔴 Advisory and deterministic. Days overdue, amount outstanding, promised
+         *     payments and reminders already sent — no model, no personal characteristics,
+         *     and it denies nobody service. Every factor and its point value is in the
+         *     response so the ranking can be argued with.
+         */
+        get: operations["receivables_priority_api_v1_receivables_priority__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/payment-requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Payment Request List */
+        get: operations["payment_request_list_api_v1_invoices__invoice_id__payment_requests__get"];
+        put?: never;
+        /**
+         * Payment Request Create
+         * @description Generate a UPI link and QR, or a gateway payment request.
+         *
+         *     🔴 This does not record a payment, and generating or scanning the QR never
+         *     will. A manual UPI request sits at `awaiting_manual_confirmation` until a
+         *     person enters the receipt.
+         *
+         *     Idempotent: replaying it returns the same request rather than sending the
+         *     customer a second link for one invoice.
+         */
+        post: operations["payment_request_create_api_v1_invoices__invoice_id__payment_requests__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/promises/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Payment Promise Create
+         * @description Record that a customer said they would pay on a date.
+         *
+         *     Not a payment either — but a fact the reminder preview and the collection
+         *     ranking both use, so chasing somebody the day after they promised is
+         *     something the system declines to do.
+         */
+        post: operations["payment_promise_create_api_v1_invoices__invoice_id__promises__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment-reconciliation/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payment Reconciliation Queue
+         * @description Webhook events that need a person: unmatched, replayed or unsigned.
+         *
+         *     🔴 This queue existing is the point. An event whose amount does not match,
+         *     whose reference resolves to nothing, or which arrived twice is never
+         *     guessed at — it lands here, oldest first, and somebody decides.
+         */
+        get: operations["payment_reconciliation_queue_api_v1_payment_reconciliation__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/deliveries/preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delivery Preview
+         * @description Exactly what would be sent, to exactly whom, carrying exactly which PDF.
+         *
+         *     A blocked preview still returns 200 with `blocked_reason` set — the screen
+         *     has to *show* why it cannot send. Sending is refused separately.
+         */
+        post: operations["delivery_preview_api_v1_invoices__invoice_id__deliveries_preview__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/deliveries/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Delivery History
+         * @description Every attempt, newest first, each naming the PDF hash it carried.
+         *
+         *     🔴 A resend after a re-render is a different artifact. "Which document did
+         *     they actually receive" is answerable only because each attempt recorded
+         *     what it carried rather than pointing at whatever the invoice holds now.
+         */
+        get: operations["delivery_history_api_v1_invoices__invoice_id__deliveries__get"];
+        put?: never;
+        /**
+         * Delivery Send
+         * @description Confirm a frozen preview and put it in the outbox.
+         *
+         *     🔴 The row is written in the same transaction as the confirmation, then
+         *     dispatched. A crash between the two leaves work a worker will pick up,
+         *     rather than a confirmation that silently did nothing.
+         */
+        post: operations["delivery_send_api_v1_invoices__invoice_id__deliveries__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reminder-policies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reminder Policy List */
+        get: operations["reminder_policy_list_api_v1_reminder_policies__get"];
+        put?: never;
+        /**
+         * Reminder Policy Create
+         * @description Create a policy. 🔴 Autosend is off; enabling it is a separate act.
+         */
+        post: operations["reminder_policy_create_api_v1_reminder_policies__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reminder-policies/{policy_id}/autosend/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reminder Policy Autosend
+         * @description 🔴 Let a scheduled run send without a person, or stop it.
+         *
+         *     Separately permissioned, and it records who, when and why. Enabling
+         *     requires a ceiling above zero — the DDL refuses the combination of
+         *     "enabled" with no limit and no named enabler, so this cannot be half-done.
+         */
+        post: operations["reminder_policy_autosend_api_v1_reminder_policies__policy_id__autosend__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reminder-runs/preview/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reminder Run Preview
+         * @description Build a batch preview. Sends nothing.
+         *
+         *     🔴 The response carries `skipped` beside `candidates`. A preview showing
+         *     only who would be contacted hides the decisions worth reviewing — the
+         *     opt-outs, the frequency caps, the promises to pay.
+         */
+        post: operations["reminder_run_preview_api_v1_reminder_runs_preview__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reminder-runs/{run_id}/confirm/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reminder Run Confirm
+         * @description Confirm a frozen preview and queue every candidate.
+         *
+         *     🔴 The preview is rebuilt and re-hashed before anything is queued. A
+         *     payment that arrived, an opt-out that landed or an invoice that was
+         *     cancelled since the screen was rendered changes the hash, and the whole run
+         *     is refused rather than partly sent.
+         */
+        post: operations["reminder_run_confirm_api_v1_reminder_runs__run_id__confirm__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment-webhooks/{provider}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Payment Webhook
+         * @description Take one event. Quick, durable, and honest about what it did with it.
+         */
+        post: operations["payment_webhook_api_v1_payment_webhooks__provider___post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gstin/check/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gstin Local Check
+         * @description Layer one: format, embedded PAN, state code and checksum. No network.
+         *
+         *     🔴 Fast enough to run as the user types, and it is **not** a verification.
+         *     The response says so in `note`, and there is deliberately no field a UI
+         *     could read as "GST-verified".
+         */
+        get: operations["gstin_local_check_api_v1_gstin_check__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gstin/verifications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Gstin Verification Create
+         * @description Layer two: ask the provider whether this registration is active.
+         *
+         *     Cached for a configurable TTL and deduplicated across concurrent callers.
+         *     `force` is what **Verify again** calls — a registration can be cancelled
+         *     without notice, and a customer that matters is worth a fresh lookup.
+         *
+         *     🔴 Only the GSTIN is sent to the provider. Never invoice lines, never
+         *     amounts, never anything else from the CRM.
+         */
+        post: operations["gstin_verification_create_api_v1_gstin_verifications__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gstin/verifications/{verification_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gstin Verification Get */
+        get: operations["gstin_verification_get_api_v1_gstin_verifications__verification_id___get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/gstin-check/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Gstin Check
+         * @description Both layers for this invoice's buyer, plus the CRM comparison.
+         *
+         *     🔴 The comparison reports differences and writes none. Silently overwriting
+         *     a customer record with a provider's spelling of their name is how a
+         *     registry stops being something a human curated.
+         */
+        post: operations["invoice_gstin_check_api_v1_invoices__invoice_id__gstin_check__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/gstin-check/use-verified/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Gstin Use Verified
+         * @description Populate a **draft** from the verified registry identity.
+         *
+         *     🔴 Draft only, and only for an active registration. An issued invoice's
+         *     buyer block is a snapshot of what was printed; a customer that moved office
+         *     must not silently alter a document their accounts team already holds.
+         */
+        post: operations["invoice_gstin_use_verified_api_v1_invoices__invoice_id__gstin_check_use_verified__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/gstin-check/override/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Gstin Override
+         * @description 🔴 Proceed despite an unavailable or mismatched verification.
+         *
+         *     Separately permissioned, and it captures actor, reason and time on an
+         *     immutable row. Allowed only where the result is *unknown* or a mismatch —
+         *     never where the registry positively reports the registration cancelled,
+         *     because billing GST to a cancelled registration is not a judgement call.
+         */
+        post: operations["invoice_gstin_override_api_v1_invoices__invoice_id__gstin_check_override__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging-webhooks/whatsapp/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whatsapp Verify
+         * @description Meta's subscription handshake. Echoes the challenge if the token matches.
+         *
+         *     Constant-time comparison, and a refusal when no token is configured — an
+         *     endpoint that accepts an empty token accepts anyone's subscription.
+         */
+        get: operations["whatsapp_verify_api_v1_messaging_webhooks_whatsapp__get"];
+        put?: never;
+        /**
+         * Whatsapp Inbound
+         * @description Take an envelope of messages.
+         *
+         *     🔴 200 for anything durably recorded, including messages that failed
+         *     signature verification or came from an unknown sender. Meta retries on
+         *     non-2xx, and retrying a message we have deliberately ignored adds load and
+         *     changes nothing.
+         */
+        post: operations["whatsapp_inbound_api_v1_messaging_webhooks_whatsapp__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tax-codes/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tax Code List
+         * @description HSN/SAC records valid on a date.
+         *
+         *     🔴 `on_date` is the *invoice's* date when this backs a suggestion, not
+         *     today's. A rate that changed in July does not apply to a June document, and
+         *     the parameter exists so a caller has to decide which date it means.
+         */
+        get: operations["tax_code_list_api_v1_tax_codes__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tax-codes/suggest/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tax Code Suggest
+         * @description A code for a line description, with its effective date and citation.
+         *
+         *     Returns null rather than a guess. A code with no source is an opinion, and
+         *     an unreviewed record comes back labelled as such — the UI must not present
+         *     it as a classification.
+         */
+        get: operations["tax_code_suggest_api_v1_tax_codes_suggest__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tax-codes/seed/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tax Code Seed
+         * @description Insert the two SACs this business bills under, if absent.
+         *
+         *     🔴 Seeded `under_review`, never `approved`. Loading the wider rate schedule
+         *     is a documented ingestion process with a CA at the end of it, not this
+         *     endpoint — a scraped rate presented as verified would be this codebase
+         *     making a tax determination.
+         */
+        post: operations["tax_code_seed_api_v1_tax_codes_seed__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tax-codes/{record_id}/approve/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tax Code Approve
+         * @description 🔴 The only route to `is_verified`. Records the reviewer's name.
+         *
+         *     The database refuses `approved` without a reviewer, so an approval cannot
+         *     exist without somebody's name against it.
+         */
+        post: operations["tax_code_approve_api_v1_tax_codes__record_id__approve__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/tally.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Tally
+         * @description A Tally-shaped CSV, one row per invoice line. 🔴 An export, not a filing.
+         */
+        get: operations["export_tally_api_v1_exports_tally_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/zoho.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Zoho */
+        get: operations["export_zoho_api_v1_exports_zoho_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/gstr1-working-paper/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Gstr1 Working Paper
+         * @description A B2B working sheet with its reconciliation warnings.
+         *
+         *     🔴 A working paper for the CA. It is shaped like GSTR-1's B2B table so it
+         *     can be compared with what they file; it has not been validated against the
+         *     portal's schema, no IRN has been obtained, and nothing here has been or
+         *     will be submitted. The `not_a_filing` field says so in the payload.
+         */
+        get: operations["export_gstr1_working_paper_api_v1_exports_gstr1_working_paper__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoice-ai/evaluations/summary/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Evaluation Summary
+         * @description Accuracy, abstention, latency and safety for the most recent run.
+         *
+         *     🔴 `critical_passed` is reported on its own and never folded into
+         *     `pass_rate`. An invoice number and a GSTIN are exactly right or they are
+         *     wrong; averaging them with a dozen softer fields produces a number that
+         *     looks healthy while the two that matter are broken.
+         */
+        get: operations["ai_evaluation_summary_api_v1_invoice_ai_evaluations_summary__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/healthz/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Healthz
+         * @description Unauthenticated liveness probe. A load balancer has no token to offer.
+         */
+        get: operations["healthz_api_v1_healthz__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/readyz/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readyz
+         * @description Readiness — liveness plus a database round trip.
+         *
+         *     Separate from healthz on purpose: a process that is up but cannot reach
+         *     Singapore should be taken out of rotation, not restarted.
+         */
+        get: operations["readyz_api_v1_readyz__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -435,480 +2108,2563 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @enum {unknown} */
-        BlankEnum: "";
-        Block: {
-            readonly id: number;
-            lgd_code?: number | null;
-            name: string;
-            name_local?: string | null;
-            district: number;
-            readonly district_name: string;
-        };
-        BulkAssign: {
-            ids: string[];
-            /** Format: uuid */
-            owner_user_id: string | null;
-        };
-        Crop: {
-            readonly id: number;
+        /**
+         * AcknowledgeRequest
+         * @description Accept one non-blocking warning, with a reason.
+         *
+         *     🔴 There is no acknowledgement path for a blocking error. Those are fixed,
+         *     or overridden through the GSTIN override, which is separately permissioned
+         *     and records the same three things: who, when, why.
+         */
+        AcknowledgeRequest: {
+            /** Code */
             code: string;
-            name: string;
-            name_local?: string | null;
-            /** @description cereal, pulse, oilseed, cash, horticulture, fodder */
-            category?: string | null;
-            default_season?: (components["schemas"]["DefaultSeasonEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            /** Reason */
+            reason: string;
+        };
+        /** AgeingBucket */
+        AgeingBucket: {
+            /** Bucket */
+            bucket: string;
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: string;
+            /** Display */
+            display: string;
+        };
+        /** AgeingReport */
+        AgeingReport: {
+            summary: components["schemas"]["AgeingSummary"];
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** By Buyer */
+            by_buyer: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AgeingSummary */
+        AgeingSummary: {
+            /** As Of */
+            as_of: string;
+            /** Invoice Count */
+            invoice_count: number;
+            /** Total Outstanding */
+            total_outstanding: string;
+            /** Assumed Due Dates */
+            assumed_due_dates: number;
+            /** Buckets */
+            buckets: components["schemas"]["AgeingBucket"][];
+            /** Display */
+            display: {
+                [key: string]: string;
+            };
+            /** Note */
+            note: string;
+        };
+        /** ApplyResult */
+        ApplyResult: {
+            proposal: components["schemas"]["ProposalOut"];
+            /**
+             * Invoice
+             * Format: uuid
+             */
+            invoice: string;
+            /** Applied Diff */
+            applied_diff: {
+                [key: string]: unknown;
+            }[];
         };
         /**
-         * @description * `kharif` - Kharif
-         *     * `rabi` - Rabi
-         *     * `zaid` - Zaid
-         *     * `perennial` - Perennial
-         *     * `annual` - Annual
-         * @enum {string}
+         * ApproveRequest
+         * @description 🔴 The reviewer's name is required. "Approved" with nobody's name against
+         *     it is not a review, and the database refuses the row without one.
          */
-        DefaultSeasonEnum: "kharif" | "rabi" | "zaid" | "perennial" | "annual";
-        District: {
-            readonly id: number;
-            lgd_code?: number | null;
-            name: string;
-            name_local?: string | null;
-            state: number;
-            readonly state_name: string;
+        ApproveRequest: {
+            /** Reviewer Name */
+            reviewer_name: string;
         };
-        /** @description Doc 11 §3's duplicate response shape. */
-        DuplicateCandidate: {
-            /** Format: uuid */
+        /**
+         * AutosendRequest
+         * @description Enable or disable unattended sending for a policy.
+         *
+         *     🔴 Enabling requires a limit above zero and a reason. Both are recorded,
+         *     because "who decided the machine could message customers unattended, and
+         *     what did they think the ceiling was" is the question afterwards.
+         */
+        AutosendRequest: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Max Per Run
+             * @default 0
+             */
+            max_per_run: number;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * BatchCreateIn
+         * @description Stage 1 — LAND.
+         *
+         *     `rows` are the parsed source rows, already mapped to CRM field names by
+         *     `mapping`. Parsing XLSX/CSV happens at the edge; this endpoint takes the
+         *     rows so the pipeline has one input shape whether they came from a file, a
+         *     partner API or a paste.
+         */
+        BatchCreateIn: {
+            /** File Name */
+            file_name: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Source Id */
+            source_id: number;
+            /** Mapping */
+            mapping?: {
+                [key: string]: string;
+            };
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** BatchOut */
+        BatchOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
             id: string;
-            name: string;
-            district: string | null;
-            /** Format: double */
-            similarity: number;
-            matched_on: string[];
+            /** File Name */
+            file_name: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Source Id */
+            source_id: number;
+            /** Source Code */
+            source_code?: string | null;
+            /** Source Kind */
+            source_kind?: string | null;
+            /** Status */
+            status: string;
+            /** Rows Total */
+            rows_total: number;
+            /** Rows Created */
+            rows_created: number;
+            /** Rows Updated */
+            rows_updated: number;
+            /** Rows Skipped */
+            rows_skipped: number;
+            /** Rows Error */
+            rows_error: number;
+            /** Legal Basis Confirmed */
+            legal_basis_confirmed: boolean;
+            /** Consent Evidence Ref */
+            consent_evidence_ref?: string | null;
+            /** Storage Key */
+            storage_key?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
-        DuplicateCheck: {
+        /** BillingEntityOut */
+        BillingEntityOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Legal Name */
+            legal_name: string;
+            /** State Code */
+            state_code: string | null;
+            /** Gstin */
+            gstin: string | null;
+            /** Bank Name */
+            bank_name: string | null;
+            /** Bank Account No */
+            bank_account_no: string | null;
+            /** Bank Ifsc */
+            bank_ifsc: string | null;
+            /** Template Code */
+            template_code: string;
+            /**
+             * Valid From
+             * Format: date
+             */
+            valid_from: string;
+            /** Valid To */
+            valid_to: string | null;
+        };
+        /** BlockOut */
+        BlockOut: {
+            /** Id */
+            id: number;
+            /** Lgd Code */
+            lgd_code?: number | null;
+            /** District Id */
+            district_id: number;
+            /** Name */
             name: string;
-            district?: number | null;
-            state?: number | null;
-            /** Format: uuid */
+            /** Name Local */
+            name_local?: string | null;
+        };
+        /** Body_farmer_import_csv_api_v1_farmers_import_csv__post */
+        Body_farmer_import_csv_api_v1_farmers_import_csv__post: {
+            /** Source Code */
+            source_code: string;
+            /** File */
+            file: string;
+        };
+        /** Body_invoice_extract_accept_api_v1_invoices_extract__extraction_id__accept__post */
+        Body_invoice_extract_accept_api_v1_invoices_extract__extraction_id__accept__post: {
+            /**
+             * Invoice
+             * Format: uuid
+             */
+            invoice: string;
+        };
+        /** Body_invoice_extract_api_v1_invoices_extract__post */
+        Body_invoice_extract_api_v1_invoices_extract__post: {
+            /**
+             * File
+             * @description A PDF or a photo of the invoice.
+             */
+            file: string;
+            /**
+             * Entity Code
+             * @default TEPL
+             */
+            entity_code: string;
+            /** Organisation */
+            organisation?: string | null;
+        };
+        /** BulkAssignRequest */
+        BulkAssignRequest: {
+            /** Ids */
+            ids: string[];
+            /**
+             * Owner User Id
+             * Format: uuid
+             */
+            owner_user_id: string;
+        };
+        /**
+         * CalculationTrace
+         * @description 🔴 Server-computed, every figure. A model may paraphrase this and may not
+         *     replace a number in it (INVOICE.md §12.3 C).
+         */
+        CalculationTrace: {
+            /** Invoice Id */
+            invoice_id: string;
+            /** Invoice No */
+            invoice_no: string | null;
+            /** Tax Treatment */
+            tax_treatment: string;
+            /** Tax Rate Pct */
+            tax_rate_pct: string;
+            /** Lines */
+            lines: components["schemas"]["TraceLine"][];
+            /** Taxable Value */
+            taxable_value: string;
+            /** Tax Amount */
+            tax_amount: string;
+            /** Total Value */
+            total_value: string;
+            /** Amount In Words */
+            amount_in_words: string;
+            /** Rounding */
+            rounding: string;
+            /** Treatment Evidence */
+            treatment_evidence: {
+                [key: string]: unknown;
+            };
+            /** Header Agrees With Lines */
+            header_agrees_with_lines: boolean;
+        };
+        /** CancelRequest */
+        CancelRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** CheckReportOut */
+        CheckReportOut: {
+            /** Invoice Id */
+            invoice_id: string;
+            /** Invoice Sha256 */
+            invoice_sha256: string;
+            /** Can Issue */
+            can_issue: boolean;
+            /** Blocking Count */
+            blocking_count: number;
+            /** Warning Count */
+            warning_count: number;
+            /** Unacknowledged Warning Count */
+            unacknowledged_warning_count: number;
+            /** Acknowledged Codes */
+            acknowledged_codes: string[];
+            /** Results */
+            results: components["schemas"]["CheckResultOut"][];
+        };
+        /** CheckResultOut */
+        CheckResultOut: {
+            /** Code */
+            code: string;
+            /** Severity */
+            severity: string;
+            /** Title */
+            title: string;
+            /** Explanation */
+            explanation: string;
+            /** Blocks Issue */
+            blocks_issue: boolean;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            };
+            /** Not Available */
+            not_available: boolean;
+        };
+        /** Citation */
+        Citation: {
+            /** Title */
+            title: string;
+            /** Url */
+            url: string | null;
+            /** Reviewer */
+            reviewer: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+        };
+        /** CommitOut */
+        CommitOut: {
+            batch: components["schemas"]["BatchOut"];
+            /** Rows Created */
+            rows_created: number;
+            /** Rows Updated */
+            rows_updated: number;
+            /** Rows Skipped */
+            rows_skipped: number;
+            /** Rows Error */
+            rows_error: number;
+            /** Contradictions */
+            contradictions: number;
+            /** Reversible Until */
+            reversible_until?: string | null;
+        };
+        /**
+         * ContactPointIn
+         * @description A contact point being recorded.
+         *
+         *     `source_id` is required, not optional. A phone number with no stated
+         *     provenance cannot be assessed against R4 later, and "we do not know where
+         *     this came from" is the state that makes a whole table unusable.
+         */
+        ContactPointIn: {
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: string;
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+            /** Source Id */
+            source_id: number;
+            /**
+             * Country Code
+             * @default +91
+             */
+            country_code: string;
+        };
+        /**
+         * ContactPointOut
+         * @description One phone or email.
+         *
+         *     `masked` says which form `value` is in, so a client never has to guess
+         *     whether it is looking at a real number — and so a screen showing an
+         *     unmasked value can say out loud that the view was recorded.
+         */
+        ContactPointOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: string;
+            /** Masked */
+            masked: boolean;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Verification */
+            verification: string;
+            /** Verified At */
+            verified_at?: string | null;
+            /** Delivery Failures */
+            delivery_failures: number;
+            /** Is Whatsapp Capable */
+            is_whatsapp_capable?: boolean | null;
+            /** Is Personal */
+            is_personal: boolean;
+            /** Source Id */
+            source_id?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ContradictionOut */
+        ContradictionOut: {
+            /** Id */
+            id: number;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Field Name */
+            field_name: string;
+            /** Value A */
+            value_a: string | null;
+            /** Value B */
+            value_b: string | null;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Resolved By */
+            resolved_by: string | null;
+            /** Resolution */
+            resolution: string | null;
+        };
+        /** ContradictionResolution */
+        ContradictionResolution: {
+            /** Resolution */
+            resolution: string;
+        };
+        /** CropOut */
+        CropOut: {
+            /** Id */
+            id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Name Local */
+            name_local?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Default Season */
+            default_season?: string | null;
+        };
+        /** DeliveryOut */
+        DeliveryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /** Channel */
+            channel: string;
+            /** Recipient */
+            recipient: string;
+            /** Status */
+            status: string;
+            /** Attempts */
+            attempts: number;
+            /** Pdf Sha256 */
+            pdf_sha256: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Provider Message Id */
+            provider_message_id: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Detail */
+            error_detail: string | null;
+        };
+        /** DeliveryPreviewOut */
+        DeliveryPreviewOut: {
+            /** Invoice Id */
+            invoice_id: string;
+            /** Channel */
+            channel: string;
+            /** Recipient */
+            recipient: string;
+            /** Recipient Name */
+            recipient_name: string | null;
+            /** Subject */
+            subject: string | null;
+            /** Body */
+            body: string;
+            /** Pdf Sha256 */
+            pdf_sha256: string | null;
+            /** Template Version */
+            template_version: string;
+            /** Preview Sha256 */
+            preview_sha256: string;
+            /** Warnings */
+            warnings: string[];
+            /** Blocked Reason */
+            blocked_reason: string | null;
+            /** Can Send */
+            can_send: boolean;
+        };
+        /** DeliveryPreviewRequest */
+        DeliveryPreviewRequest: {
+            /**
+             * Channel
+             * @default email
+             */
+            channel: string;
+            /** Recipient */
+            recipient?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Body */
+            body?: string | null;
+            /**
+             * Attach Pdf
+             * @default true
+             */
+            attach_pdf: boolean;
+        };
+        /**
+         * DeliverySendRequest
+         * @description Confirm a frozen preview. The hash is required.
+         */
+        DeliverySendRequest: {
+            /**
+             * Channel
+             * @default email
+             */
+            channel: string;
+            /** Recipient */
+            recipient?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Body */
+            body?: string | null;
+            /**
+             * Attach Pdf
+             * @default true
+             */
+            attach_pdf: boolean;
+            /** Preview Sha256 */
+            preview_sha256: string;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+        };
+        /** DistrictOut */
+        DistrictOut: {
+            /** Id */
+            id: number;
+            /** Lgd Code */
+            lgd_code: number;
+            /** State Id */
+            state_id: number;
+            /** Name */
+            name: string;
+            /** Name Local */
+            name_local?: string | null;
+        };
+        /**
+         * DryRunOut
+         * @description What a commit would do, without doing it.
+         *
+         *     `sample` is twenty rows as they *would* be written — Doc 06 §3.3 step 3.
+         *     Counts alone let somebody approve an import whose every row is subtly
+         *     wrong in the same way.
+         */
+        DryRunOut: {
+            batch: components["schemas"]["BatchOut"];
+            /** Rows Total */
+            rows_total: number;
+            /** Rows Created */
+            rows_created: number;
+            /** Rows Updated */
+            rows_updated: number;
+            /** Rows Skipped */
+            rows_skipped: number;
+            /** Rows Error */
+            rows_error: number;
+            /** Contradictions */
+            contradictions: number;
+            /** Sample */
+            sample: {
+                [key: string]: unknown;
+            }[];
+            /** Errors */
+            errors: components["schemas"]["RowErrorOut"][];
+            /** May Commit */
+            may_commit: boolean;
+            /** Blocked Reason */
+            blocked_reason?: string | null;
+        };
+        /** DuplicateCandidateOut */
+        DuplicateCandidateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Org Code */
+            org_code: string | null;
+            /** Cin */
+            cin: string | null;
+            /** District Id */
+            district_id: number | null;
+            /** Score */
+            score: number;
+        };
+        /** DuplicateCheckRequest */
+        DuplicateCheckRequest: {
+            /** Name */
+            name: string;
+            /** District Id */
+            district_id?: number | null;
+            /** State Id */
+            state_id?: number | null;
+            /** Exclude Id */
             exclude_id?: string | null;
         };
-        Health: {
-            status: string;
+        /** FarmerDetail */
+        FarmerDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** State Id */
+            state_id: number;
+            /** Farmer Code */
+            farmer_code: string | null;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string | null;
+            /** District Id */
+            district_id: number | null;
+            /** Village Id */
+            village_id: number | null;
+            /** Total Area Ha */
+            total_area_ha: string | null;
+            /** Farmer Class */
+            farmer_class: string;
+            /** Primary Fpo Id */
+            primary_fpo_id: string | null;
+            /** Quality Tier */
+            quality_tier: string;
+            /** Completeness Score */
+            completeness_score: number;
+            /** Theta External Id */
+            theta_external_id: string | null;
+            /** Is Deleted */
+            is_deleted: boolean;
+            state: components["schemas"]["PlaceOut"];
+            district?: components["schemas"]["PlaceOut"] | null;
+            /** Name Local */
+            name_local: string | null;
+            /** Father Or Spouse */
+            father_or_spouse: string | null;
+            /** Age Band */
+            age_band: string | null;
+            /** Block Id */
+            block_id: number | null;
+            /** Address Line */
+            address_line: string | null;
+            /** Pincode */
+            pincode: string | null;
+            /** Primary Crop Id */
+            primary_crop_id: number | null;
+            /** Supplying Mill Id */
+            supplying_mill_id: string | null;
+            /** Primary Source Id */
+            primary_source_id: number | null;
+            /** Consent Summary */
+            consent_summary: {
+                [key: string]: unknown;
+            };
+            /** Owner User Id */
+            owner_user_id: string | null;
+            /** Tags */
+            tags: string[];
+            /** Extra */
+            extra: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FarmerImportResult */
+        FarmerImportResult: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Errors */
+            errors?: string[];
+        };
+        /** FarmerPage */
+        FarmerPage: {
+            /** Count */
+            count: number;
+            /** Results */
+            results: components["schemas"]["FarmerRow"][];
+        };
+        /** FarmerRow */
+        FarmerRow: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** State Id */
+            state_id: number;
+            /** Farmer Code */
+            farmer_code: string | null;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string | null;
+            /** District Id */
+            district_id: number | null;
+            /** Village Id */
+            village_id: number | null;
+            /** Total Area Ha */
+            total_area_ha: string | null;
+            /** Farmer Class */
+            farmer_class: string;
+            /** Primary Fpo Id */
+            primary_fpo_id: string | null;
+            /** Quality Tier */
+            quality_tier: string;
+            /** Completeness Score */
+            completeness_score: number;
+            /** Theta External Id */
+            theta_external_id: string | null;
+            /** Is Deleted */
+            is_deleted: boolean;
+            state: components["schemas"]["PlaceOut"];
+            district?: components["schemas"]["PlaceOut"] | null;
+        };
+        /** GstinCheckOut */
+        GstinCheckOut: {
+            /** Gstin */
+            gstin: string | null;
+            local: components["schemas"]["LocalCheckOut"];
+            live: components["schemas"]["VerificationOut"] | null;
+            /** Differences */
+            differences: {
+                [key: string]: unknown;
+            }[];
+            /** Policy */
+            policy: string;
+            /** Blocks Issue */
+            blocks_issue: boolean;
+            /**
+             * Overridden
+             * @default false
+             */
+            overridden: boolean;
         };
         /**
-         * @description * `producer_company` - Producer company
-         *     * `cooperative_society` - Cooperative society
-         *     * `section_8_company` - Section 8 company
-         *     * `private_limited` - Private limited
-         *     * `public_limited` - Public limited
-         *     * `llp` - LLP
-         *     * `partnership` - Partnership
-         *     * `proprietorship` - Proprietorship
-         *     * `trust` - Trust
-         *     * `society` - Society
-         *     * `statutory_body` - Statutory body
-         *     * `unregistered` - Unregistered
-         *     * `unknown` - Unknown
-         * @enum {string}
+         * GstinOverrideRequest
+         * @description 🔴 A reason is mandatory, and it is stored on an immutable row with the
+         *     actor and the time. An override nobody can review afterwards is not a
+         *     control, it is a bypass.
          */
-        LegalFormEnum: "producer_company" | "cooperative_society" | "section_8_company" | "private_limited" | "public_limited" | "llp" | "partnership" | "proprietorship" | "trust" | "society" | "statutory_body" | "unregistered" | "unknown";
+        GstinOverrideRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** Gstr1Summary */
+        Gstr1Summary: {
+            /** Invoice Count */
+            invoice_count: number;
+            /** B2B Count */
+            b2b_count: number;
+            /** B2C Count */
+            b2c_count: number;
+            /** Taxable Value */
+            taxable_value: string;
+            /** Tax Amount */
+            tax_amount: string;
+            /** Total Value */
+            total_value: string;
+            /** Display */
+            display: {
+                [key: string]: string;
+            };
+        };
+        /** Gstr1WorkingPaper */
+        Gstr1WorkingPaper: {
+            /** Period */
+            period: {
+                [key: string]: string;
+            };
+            /** Entity Code */
+            entity_code: string | null;
+            /** B2B */
+            b2b: {
+                [key: string]: unknown;
+            }[];
+            /** B2C */
+            b2c: {
+                [key: string]: unknown;
+            }[];
+            summary: components["schemas"]["Gstr1Summary"];
+            /** Numbers In Period */
+            numbers_in_period: string[];
+            /** Warnings */
+            warnings: {
+                [key: string]: unknown;
+            }[];
+            /** Blocking Warnings */
+            blocking_warnings: {
+                [key: string]: unknown;
+            }[];
+            /** Disclaimer */
+            disclaimer: string;
+            /** Not A Filing */
+            not_a_filing: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InvoiceCreate */
+        InvoiceCreate: {
+            /**
+             * Billing Entity
+             * Format: uuid
+             */
+            billing_entity: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Buyer Name */
+            buyer_name: string;
+            /** Buyer Address */
+            buyer_address?: string | null;
+            /** Buyer Gstin */
+            buyer_gstin?: string | null;
+            /** Buyer State Code */
+            buyer_state_code?: string | null;
+            /**
+             * Buyer Is Govt Uin
+             * @default false
+             */
+            buyer_is_govt_uin: boolean;
+            /** Buyer Order No */
+            buyer_order_no?: string | null;
+            /** Work Order Ref */
+            work_order_ref?: string | null;
+            /** Letter Ref */
+            letter_ref?: string | null;
+            /** Payment Terms */
+            payment_terms?: string | null;
+            /** Organisation */
+            organisation?: string | null;
+            /**
+             * Tax Treatment
+             * @default igst
+             */
+            tax_treatment: string;
+            /**
+             * Tax Rate Pct
+             * @default 18.00
+             */
+            tax_rate_pct: number | string;
+            /** Place Of Supply State Code */
+            place_of_supply_state_code?: string | null;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["InvoiceLineIn"][];
+        };
+        /** InvoiceDetail */
+        InvoiceDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invoice No */
+            invoice_no: string | null;
+            /** Entity Code */
+            entity_code: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Financial Year */
+            financial_year: string | null;
+            /** Buyer Name */
+            buyer_name: string;
+            /** Status */
+            status: string;
+            /** Tax Treatment */
+            tax_treatment: string;
+            /** Taxable Value */
+            taxable_value: string;
+            /** Tax Amount */
+            tax_amount: string;
+            /** Total Value */
+            total_value: string;
+            /** Amount Outstanding */
+            amount_outstanding: string;
+            display: components["schemas"]["MoneyDisplay"];
+            /** Buyer Address */
+            buyer_address: string | null;
+            /** Buyer Gstin */
+            buyer_gstin: string | null;
+            /** Buyer Order No */
+            buyer_order_no: string | null;
+            /** Work Order Ref */
+            work_order_ref: string | null;
+            /** Letter Ref */
+            letter_ref: string | null;
+            /** Payment Terms */
+            payment_terms: string | null;
+            /** Tax Rate Pct */
+            tax_rate_pct: string;
+            /** Amount In Words */
+            amount_in_words: string | null;
+            /** Amount Received */
+            amount_received: string;
+            /** Issued At */
+            issued_at: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Cancellation Reason */
+            cancellation_reason: string | null;
+            /** Lines */
+            lines: components["schemas"]["InvoiceLineOut"][];
+            /** Payments */
+            payments: components["schemas"]["InvoicePaymentOut"][];
+        };
         /**
-         * @description Issues the token pair and reports whether MFA still has to be satisfied.
+         * InvoiceLineIn
+         * @description A line as the client sends it.
          *
-         *     🔴 Doc 12 §1: MFA is mandatory for data_ops, campaign_manager, compliance
-         *     and admin. The token is issued either way, but `mfa_satisfied: false` means
-         *     the client must complete /auth/mfa/verify/ before the token is accepted by
-         *     any protected endpoint — enforced by IsMFAVerified, not by client goodwill.
+         *     🔴 No amounts. `line_taxable_value`, `line_tax_amount` and `line_total` are
+         *     computed server-side in `api/money.py` — a client that could post its own
+         *     totals could post an invoice whose lines do not sum to its header.
          */
-        Login: {
+        InvoiceLineIn: {
+            /** Line No */
+            line_no?: number | null;
+            /** Description */
+            description: string;
+            /** Hsn Sac */
+            hsn_sac?: string | null;
+            /** Quantity */
+            quantity: number | string;
+            /** Unit */
+            unit: string;
+            /** Rate */
+            rate: number | string;
+            /**
+             * Rate Is Tax Inclusive
+             * @default false
+             */
+            rate_is_tax_inclusive: boolean;
+            /** Tax Rate Pct */
+            tax_rate_pct?: number | string | null;
+            /** Location Note */
+            location_note?: string | null;
+        };
+        /** InvoiceLineOut */
+        InvoiceLineOut: {
+            /** Line No */
+            line_no: number;
+            /** Description */
+            description: string;
+            /** Hsn Sac */
+            hsn_sac: string | null;
+            /** Quantity */
+            quantity: string;
+            /** Unit */
+            unit: string;
+            /** Quantity Ha */
+            quantity_ha: string | null;
+            /** Rate */
+            rate: string;
+            /** Line Taxable Value */
+            line_taxable_value: string;
+            /** Line Tax Amount */
+            line_tax_amount: string;
+            /** Line Total */
+            line_total: string;
+        };
+        /** InvoicePage */
+        InvoicePage: {
+            /** Count */
+            count: number;
+            /** Results */
+            results: components["schemas"]["InvoiceRow"][];
+        };
+        /** InvoicePaymentOut */
+        InvoicePaymentOut: {
+            /** Amount */
+            amount: string;
+            /** Amount Display */
+            amount_display: string;
+            /**
+             * Received On
+             * Format: date
+             */
+            received_on: string;
+            /** Mode */
+            mode: string | null;
+            /** Reference */
+            reference: string | null;
+        };
+        /** InvoiceRow */
+        InvoiceRow: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invoice No */
+            invoice_no: string | null;
+            /** Entity Code */
+            entity_code: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Financial Year */
+            financial_year: string | null;
+            /** Buyer Name */
+            buyer_name: string;
+            /** Status */
+            status: string;
+            /** Tax Treatment */
+            tax_treatment: string;
+            /** Taxable Value */
+            taxable_value: string;
+            /** Tax Amount */
+            tax_amount: string;
+            /** Total Value */
+            total_value: string;
+            /** Amount Outstanding */
+            amount_outstanding: string;
+            display: components["schemas"]["MoneyDisplay"];
+        };
+        /**
+         * InvoiceUpdate
+         * @description Draft edits. Every field optional; `lines` replaces the set when given.
+         */
+        InvoiceUpdate: {
+            /** Invoice Date */
+            invoice_date?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Buyer Name */
+            buyer_name?: string | null;
+            /** Buyer Address */
+            buyer_address?: string | null;
+            /** Buyer Gstin */
+            buyer_gstin?: string | null;
+            /** Buyer State Code */
+            buyer_state_code?: string | null;
+            /** Buyer Order No */
+            buyer_order_no?: string | null;
+            /** Work Order Ref */
+            work_order_ref?: string | null;
+            /** Letter Ref */
+            letter_ref?: string | null;
+            /** Payment Terms */
+            payment_terms?: string | null;
+            /** Tax Treatment */
+            tax_treatment?: string | null;
+            /** Tax Rate Pct */
+            tax_rate_pct?: number | string | null;
+            /** Lines */
+            lines?: components["schemas"]["InvoiceLineIn"][] | null;
+        };
+        /**
+         * IssueRequest
+         * @description Issue confirmation.
+         *
+         *     `invoice_sha256` is the check run being relied on. Omitting it re-runs the
+         *     checks and refuses if anything blocks — which is the safe default, so the
+         *     field is optional rather than required.
+         */
+        IssueRequest: {
+            /** Invoice Sha256 */
+            invoice_sha256?: string | null;
+            /**
+             * Acknowledge
+             * @default []
+             */
+            acknowledge: components["schemas"]["AcknowledgeRequest"][];
+        };
+        /** IssueResponse */
+        IssueResponse: {
+            /** Invoice No */
+            invoice_no: string;
+            /** Status */
+            status: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * LegalBasisIn
+         * @description 🔴 R5. Both fields are required and both are checked for substance.
+         *
+         *     `basis` is prose because that is what a regulator reads: which agreement,
+         *     with whom, covering what. A dropdown would produce twelve identical
+         *     answers and tell nobody anything.
+         */
+        LegalBasisIn: {
+            /** Basis */
+            basis: string;
+            /** Consent Evidence Ref */
+            consent_evidence_ref: string;
+        };
+        /**
+         * LocalCheckOut
+         * @description Layer one only.
+         *
+         *     🔴 There is deliberately no field here a UI could render as "GST-verified".
+         *     `valid` means well-formed; whether the registration is active is a
+         *     different question with a different endpoint, and conflating them is the
+         *     defect this module exists to prevent.
+         */
+        LocalCheckOut: {
+            /** Supplied */
+            supplied: string;
+            /** Normalised */
+            normalised: string | null;
+            /** Valid */
+            valid: boolean;
+            /** Is Govt Uin */
+            is_govt_uin: boolean;
+            /** State Code */
+            state_code: string | null;
+            /** State Name */
+            state_name: string | null;
+            /** Message */
+            message: string | null;
+            /** Note */
+            note: string;
+        };
+        /**
+         * LoginRequest
+         * @description 🔴 `email` is a plain string, not `EmailStr`.
+         *
+         *     Sign-in matches against a value already in the database; it does not
+         *     create one. Validating the format here adds nothing — a malformed address
+         *     simply matches no row — and it actively harms: `EmailStr` rejects
+         *     `.local` as a special-use domain, which locked out every seeded account
+         *     (`agent@agricrm.local`, `ops@agricrm.local`) the first time this was run
+         *     against real data.
+         *
+         *     Strict validation belongs where an address is accepted for the first time,
+         *     not where one is looked up.
+         */
+        LoginRequest: {
+            /** Email */
             email: string;
+            /** Password */
             password: string;
         };
+        /** LoginResponse */
+        LoginResponse: {
+            /** Access */
+            access: string;
+            /** Refresh */
+            refresh: string;
+            user: components["schemas"]["UserOut"];
+            /** Mfa Required */
+            mfa_required: boolean;
+            /** Mfa Enrolled */
+            mfa_enrolled: boolean;
+        };
+        /** LogoutRequest */
         LogoutRequest: {
+            /** Refresh */
             refresh: string;
         };
+        /** MFAEnrolResponse */
         MFAEnrolResponse: {
-            /** @description otpauth:// URI. Contains the shared secret — never log it. */
+            /**
+             * Provisioning Uri
+             * @description otpauth:// URI. Contains the shared secret — never log it.
+             */
             provisioning_uri: string;
-            /** @description Inline SVG QR code for the URI above. */
-            qr_svg: string;
-            /** @description Base32 secret, for manual entry. */
+            /**
+             * Secret
+             * @description Base32 secret, for manual entry.
+             */
             secret: string;
-            /** @description True if this device was already enrolled and confirmed. */
+            /**
+             * Qr Svg
+             * @description Inline SVG QR code for the provisioning URI.
+             */
+            qr_svg: string;
+            /** Already Confirmed */
             already_confirmed: boolean;
         };
-        MFAVerify: {
+        /** MFAVerifyRequest */
+        MFAVerifyRequest: {
+            /** Token */
             token: string;
         };
-        /** @enum {unknown} */
-        NullEnum: null;
-        /** @description The full record, including whichever profile the type discriminator implies. */
-        OrganisationDetail: {
-            /** Format: uuid */
-            readonly id: string;
-            readonly state_detail: components["schemas"]["State"];
-            readonly district_detail: components["schemas"]["District"];
-            readonly profile: {
-                [key: string]: unknown;
-            } | null;
-            /** @description Human-friendly: FPO-UP-000123 */
-            org_code?: string | null;
-            type: components["schemas"]["TypeEnum"];
-            status?: components["schemas"]["StatusEnum"];
-            legal_form?: components["schemas"]["LegalFormEnum"];
-            name: string;
-            /** @description Devanagari, kept verbatim. */
-            name_local?: string | null;
-            short_name?: string | null;
-            /** @description Every other spelling this org is known by. Matching reads these. */
-            aliases?: string[];
-            cin?: string | null;
-            registration_no?: string | null;
-            registration_act?: string | null;
-            /** Format: date */
-            registration_date?: string | null;
-            /**
-             * PAN (masked)
-             * @description Masked only: ABCDE****F. A full PAN never enters this column.
-             */
-            pan_masked?: string | null;
-            gstin?: string | null;
-            udyam_no?: string | null;
-            address_line1?: string | null;
-            address_line2?: string | null;
-            pincode?: string | null;
-            /** Format: decimal */
-            latitude?: string | null;
-            /** Format: decimal */
-            longitude?: string | null;
-            website?: string | null;
-            established_year?: number | null;
-            member_count?: number | null;
-            women_member_count?: number | null;
-            /** Format: decimal */
-            annual_turnover_inr?: string | null;
-            /** @description e.g. 2024-25 */
-            turnover_fy?: string | null;
-            /** @description NABARD, SFAC, NCDC, state department */
-            promoting_agency?: string | null;
-            /** @description e.g. 10,000 FPO scheme cluster id */
-            scheme_reference?: string | null;
-            quality_tier?: components["schemas"]["QualityTierEnum"];
-            readonly completeness_score: number;
-            tags?: string[];
-            extra?: unknown;
-            is_deleted?: boolean;
-            /** Format: date-time */
-            readonly created_at: string;
-            /** Format: date-time */
-            readonly updated_at: string;
-            state?: number | null;
-            district?: number | null;
-            block?: number | null;
-            village?: number | null;
-            /** Format: uuid */
-            parent_org?: string | null;
-            primary_source?: number | null;
-            /** Format: uuid */
-            owner_user?: string | null;
-            /** Format: uuid */
-            merged_into?: string | null;
+        /**
+         * MoneyDisplay
+         * @description Pre-formatted figures. See `backend/money.py` for why the server does this.
+         *
+         *     🔴 Indian digit grouping is done here and never in TypeScript. The detail
+         *     screen reads `taxable` and `tax` as well as `total` and `outstanding`; they
+         *     were absent, so it rendered "₹undefined" for two of the four figures on
+         *     every invoice.
+         */
+        MoneyDisplay: {
+            /** Total */
+            total: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Taxable */
+            taxable: string;
+            /** Tax */
+            tax: string;
+            /** Received */
+            received: string;
         };
         /**
-         * @description The grid row. Deliberately narrow.
+         * OrganisationCreate
+         * @description What a caller may set when creating.
          *
-         *     A list of 50 organisations that each carry their full profile is four
-         *     joins and roughly eight times the payload, to render a table showing six
-         *     columns. Detail is a click away.
+         *     An allow-list, not the whole model. `quality_tier`, `completeness_score`
+         *     and `org_code` are derived or assigned by the system — accepting them here
+         *     would let a client declare its own record Gold.
          */
-        OrganisationList: {
-            /** Format: uuid */
-            readonly id: string;
-            /** @description Human-friendly: FPO-UP-000123 */
-            org_code?: string | null;
+        OrganisationCreate: {
+            /** Type */
+            type: string;
+            /** Name */
             name: string;
-            /** @description Devanagari, kept verbatim. */
+            /** Name Local */
             name_local?: string | null;
-            type: components["schemas"]["TypeEnum"];
-            status?: components["schemas"]["StatusEnum"];
-            quality_tier?: components["schemas"]["QualityTierEnum"];
-            completeness_score?: number;
-            state?: number | null;
-            readonly state_name: string;
-            district?: number | null;
-            readonly district_name: string;
+            /** Short Name */
+            short_name?: string | null;
+            /**
+             * Aliases
+             * @default []
+             */
+            aliases: string[];
+            /**
+             * Status
+             * @default prospect
+             */
+            status: string;
+            /**
+             * Legal Form
+             * @default unknown
+             */
+            legal_form: string;
+            /** Cin */
+            cin?: string | null;
+            /** Registration No */
+            registration_no?: string | null;
+            /** Registration Date */
+            registration_date?: string | null;
+            /** Gstin */
+            gstin?: string | null;
+            /** State Id */
+            state_id?: number | null;
+            /** District Id */
+            district_id?: number | null;
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
+            /** Pincode */
+            pincode?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Established Year */
+            established_year?: number | null;
+            /** Member Count */
             member_count?: number | null;
-            /** Format: date-time */
-            readonly updated_at: string;
         };
-        PaginatedBlockList: {
+        /** OrganisationDetail */
+        OrganisationDetail: {
             /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             * Id
+             * Format: uuid
              */
-            next?: string | null;
+            id: string;
+            /** Org Code */
+            org_code: string | null;
+            /** Type */
+            type: string;
+            /** Status */
+            status: string;
+            /** Name */
+            name: string;
+            /** Name Local */
+            name_local: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Quality Tier */
+            quality_tier: string;
+            /** Member Count */
+            member_count: number | null;
+            /** Is Deleted */
+            is_deleted: boolean;
+            state?: components["schemas"]["PlaceOut"] | null;
+            district?: components["schemas"]["PlaceOut"] | null;
+            /** Legal Form */
+            legal_form: string;
+            /** Short Name */
+            short_name: string | null;
+            /** Aliases */
+            aliases: string[];
+            /** Registration No */
+            registration_no: string | null;
+            /** Registration Date */
+            registration_date: string | null;
+            /** Gstin */
+            gstin: string | null;
+            /** Address Line1 */
+            address_line1: string | null;
+            /** Address Line2 */
+            address_line2: string | null;
+            /** Pincode */
+            pincode: string | null;
+            /** Website */
+            website: string | null;
+            /** Established Year */
+            established_year: number | null;
+            /** Completeness Score */
+            completeness_score: number;
+            /** Merged Into Id */
+            merged_into_id: string | null;
+            /** Owner User Id */
+            owner_user_id: string | null;
+            /** Extra */
+            extra: {
+                [key: string]: unknown;
+            };
             /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+             * Created At
+             * Format: date-time
              */
-            previous?: string | null;
-            results: components["schemas"]["Block"][];
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
-        PaginatedCropList: {
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
-             */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-             */
-            previous?: string | null;
-            results: components["schemas"]["Crop"][];
+        /** OrganisationPage */
+        OrganisationPage: {
+            /** Count */
+            count: number;
+            /** Results */
+            results: components["schemas"]["OrganisationRow"][];
         };
-        PaginatedDistrictList: {
+        /**
+         * OrganisationRow
+         * @description The list shape. Deliberately narrower than the detail.
+         *
+         *     State and district are nested rather than bare ids: a client showing
+         *     "Muzaffarnagar" should not have to make two more calls to learn the name,
+         *     and the relationships are eager-loaded on the model so this costs no extra
+         *     query.
+         */
+        OrganisationRow: {
             /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
+             * Id
+             * Format: uuid
              */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-             */
-            previous?: string | null;
-            results: components["schemas"]["District"][];
+            id: string;
+            /** Org Code */
+            org_code: string | null;
+            /** Type */
+            type: string;
+            /** Status */
+            status: string;
+            /** Name */
+            name: string;
+            /** Name Local */
+            name_local: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Quality Tier */
+            quality_tier: string;
+            /** Member Count */
+            member_count: number | null;
+            /** Is Deleted */
+            is_deleted: boolean;
+            state?: components["schemas"]["PlaceOut"] | null;
+            district?: components["schemas"]["PlaceOut"] | null;
         };
-        PaginatedDuplicateCandidateList: {
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
-             */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-             */
-            previous?: string | null;
-            results: components["schemas"]["DuplicateCandidate"][];
+        /**
+         * OrganisationUpdate
+         * @description Every field optional — a PATCH sets only what it names.
+         */
+        OrganisationUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Name Local */
+            name_local?: string | null;
+            /** Short Name */
+            short_name?: string | null;
+            /** Aliases */
+            aliases?: string[] | null;
+            /** Status */
+            status?: string | null;
+            /** Legal Form */
+            legal_form?: string | null;
+            /** Cin */
+            cin?: string | null;
+            /** Registration No */
+            registration_no?: string | null;
+            /** Registration Date */
+            registration_date?: string | null;
+            /** Gstin */
+            gstin?: string | null;
+            /** State Id */
+            state_id?: number | null;
+            /** District Id */
+            district_id?: number | null;
+            /** Address Line1 */
+            address_line1?: string | null;
+            /** Address Line2 */
+            address_line2?: string | null;
+            /** Pincode */
+            pincode?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Established Year */
+            established_year?: number | null;
+            /** Member Count */
+            member_count?: number | null;
         };
-        PaginatedOrganisationListList: {
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
-             */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-             */
-            previous?: string | null;
-            results: components["schemas"]["OrganisationList"][];
-        };
-        PaginatedStateList: {
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
-             */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-             */
-            previous?: string | null;
-            results: components["schemas"]["State"][];
-        };
-        PaginatedVillageList: {
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cD00ODY%3D"
-             */
-            next?: string | null;
-            /**
-             * Format: uri
-             * @example http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
-             */
-            previous?: string | null;
-            results: components["schemas"]["Village"][];
-        };
-        PasswordChange: {
+        /** PasswordChangeRequest */
+        PasswordChangeRequest: {
+            /** Current Password */
             current_password: string;
+            /**
+             * New Password
+             * @description Doc 12 §13: 12 characters minimum.
+             */
             new_password: string;
         };
-        /** @description The full record, including whichever profile the type discriminator implies. */
-        PatchedOrganisationDetail: {
-            /** Format: uuid */
-            readonly id?: string;
-            readonly state_detail?: components["schemas"]["State"];
-            readonly district_detail?: components["schemas"]["District"];
-            readonly profile?: {
+        /** PaymentRequest */
+        PaymentRequest: {
+            /** Amount */
+            amount: number | string;
+            /**
+             * Received On
+             * Format: date
+             */
+            received_on: string;
+            /** Mode */
+            mode?: string | null;
+            /** Reference */
+            reference?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * PaymentRequestCreate
+         * @description 🔴 Creating this asks for money. It never records any.
+         *
+         *     A manual UPI request comes back `awaiting_manual_confirmation` and stays
+         *     there until a person enters a receipt or a signed webhook matches it.
+         */
+        PaymentRequestCreate: {
+            /**
+             * Provider
+             * @default manual_upi
+             */
+            provider: string;
+            /** Amount */
+            amount?: number | string | null;
+            /** Note */
+            note?: string | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+        };
+        /** PaymentRequestOut */
+        PaymentRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /** Provider */
+            provider: string;
+            /** Provider Reference */
+            provider_reference: string | null;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /** Payload Url */
+            payload_url: string | null;
+            /** Qr Svg */
+            qr_svg: string | null;
+            /** Status */
+            status: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Is Payment
+             * @default false
+             */
+            is_payment: boolean;
+            /**
+             * Note
+             * @default A payment request is not a payment. Only a human-entered receipt or a signed, matched gateway webhook creates one.
+             */
+            note: string;
+        };
+        /** PersonDetail */
+        PersonDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Full Name */
+            full_name: string;
+            /** Name Local */
+            name_local?: string | null;
+            /** Father Or Spouse */
+            father_or_spouse?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Gender */
+            gender?: string | null;
+            /** Quality Tier */
+            quality_tier: string;
+            /** Is Farmer */
+            is_farmer: boolean;
+            /** Is Deleted */
+            is_deleted: boolean;
+            state?: components["schemas"]["PlaceOut"] | null;
+            district?: components["schemas"]["PlaceOut"] | null;
+            /** Current Roles */
+            current_roles?: components["schemas"]["RoleOut"][];
+            /** Salutation */
+            salutation?: string | null;
+            /** First Name */
+            first_name: string;
+            /** Middle Name */
+            middle_name?: string | null;
+            /** Last Name */
+            last_name?: string | null;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Village Id */
+            village_id?: number | null;
+            /** Primary Source Id */
+            primary_source_id?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Extra */
+            extra: {
                 [key: string]: unknown;
-            } | null;
-            /** @description Human-friendly: FPO-UP-000123 */
-            org_code?: string | null;
-            type?: components["schemas"]["TypeEnum"];
-            status?: components["schemas"]["StatusEnum"];
-            legal_form?: components["schemas"]["LegalFormEnum"];
-            name?: string;
-            /** @description Devanagari, kept verbatim. */
-            name_local?: string | null;
-            short_name?: string | null;
-            /** @description Every other spelling this org is known by. Matching reads these. */
-            aliases?: string[];
-            cin?: string | null;
-            registration_no?: string | null;
-            registration_act?: string | null;
-            /** Format: date */
-            registration_date?: string | null;
+            };
+            /** Merged Into Id */
+            merged_into_id?: string | null;
             /**
-             * PAN (masked)
-             * @description Masked only: ABCDE****F. A full PAN never enters this column.
+             * Created At
+             * Format: date-time
              */
-            pan_masked?: string | null;
-            gstin?: string | null;
-            udyam_no?: string | null;
-            address_line1?: string | null;
-            address_line2?: string | null;
-            pincode?: string | null;
-            /** Format: decimal */
-            latitude?: string | null;
-            /** Format: decimal */
-            longitude?: string | null;
-            website?: string | null;
-            established_year?: number | null;
-            member_count?: number | null;
-            women_member_count?: number | null;
-            /** Format: decimal */
-            annual_turnover_inr?: string | null;
-            /** @description e.g. 2024-25 */
-            turnover_fy?: string | null;
-            /** @description NABARD, SFAC, NCDC, state department */
-            promoting_agency?: string | null;
-            /** @description e.g. 10,000 FPO scheme cluster id */
-            scheme_reference?: string | null;
-            quality_tier?: components["schemas"]["QualityTierEnum"];
-            readonly completeness_score?: number;
-            tags?: string[];
-            extra?: unknown;
-            is_deleted?: boolean;
-            /** Format: date-time */
-            readonly created_at?: string;
-            /** Format: date-time */
-            readonly updated_at?: string;
-            state?: number | null;
-            district?: number | null;
-            block?: number | null;
-            village?: number | null;
-            /** Format: uuid */
-            parent_org?: string | null;
-            primary_source?: number | null;
-            /** Format: uuid */
-            owner_user?: string | null;
-            /** Format: uuid */
-            merged_into?: string | null;
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Roles */
+            roles?: components["schemas"]["RoleOut"][];
+            /** Contact Points */
+            contact_points?: components["schemas"]["ContactPointOut"][];
         };
         /**
-         * @description * `gold` - Gold
-         *     * `silver` - Silver
-         *     * `bronze` - Bronze
-         *     * `quarantine` - Quarantine
-         * @enum {string}
+         * PersonIn
+         * @description A person being created.
+         *
+         *     🔴 `source_id` is required for the same reason it is on a contact point,
+         *     and it is checked against `dq.source` before the row is written: R4 says
+         *     personal data enters only through four named routes, and a source row is
+         *     how the system knows which one this was.
          */
-        QualityTierEnum: "gold" | "silver" | "bronze" | "quarantine";
+        PersonIn: {
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name?: string | null;
+            /** Middle Name */
+            middle_name?: string | null;
+            /** Salutation */
+            salutation?: string | null;
+            /** Name Local */
+            name_local?: string | null;
+            /** Father Or Spouse */
+            father_or_spouse?: string | null;
+            /** Gender */
+            gender?: string | null;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Din */
+            din?: string | null;
+            /** State Id */
+            state_id?: number | null;
+            /** District Id */
+            district_id?: number | null;
+            /** Village Id */
+            village_id?: number | null;
+            /**
+             * Is Farmer
+             * @default false
+             */
+            is_farmer: boolean;
+            /** Notes */
+            notes?: string | null;
+            /** Source Id */
+            source_id: number;
+        };
+        /** PersonPage */
+        PersonPage: {
+            /** Count */
+            count: number;
+            /** Results */
+            results: components["schemas"]["PersonRow"][];
+        };
         /**
-         * @description * `field_agent` - Field / BD Agent
-         *     * `bd_manager` - BD Manager
-         *     * `project_manager` - Project Manager
-         *     * `campaign_manager` - Campaign Manager
-         *     * `data_ops` - Data Ops Analyst
-         *     * `leadership` - Leadership
-         *     * `compliance` - Compliance Officer
-         *     * `admin` - System Admin
-         * @enum {string}
+         * PersonPatch
+         * @description Fields a caller may change. Quality tier and provenance are not among them.
          */
-        RoleEnum: "field_agent" | "bd_manager" | "project_manager" | "campaign_manager" | "data_ops" | "leadership" | "compliance" | "admin";
-        State: {
+        PersonPatch: {
+            /** First Name */
+            first_name?: string | null;
+            /** Middle Name */
+            middle_name?: string | null;
+            /** Last Name */
+            last_name?: string | null;
+            /** Salutation */
+            salutation?: string | null;
+            /** Name Local */
+            name_local?: string | null;
+            /** Father Or Spouse */
+            father_or_spouse?: string | null;
+            /** Gender */
+            gender?: string | null;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Din */
+            din?: string | null;
+            /** State Id */
+            state_id?: number | null;
+            /** District Id */
+            district_id?: number | null;
+            /** Village Id */
+            village_id?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * PersonRow
+         * @description The list shape. Carries no contact values at all.
+         */
+        PersonRow: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Full Name */
+            full_name: string;
+            /** Name Local */
+            name_local?: string | null;
+            /** Father Or Spouse */
+            father_or_spouse?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Gender */
+            gender?: string | null;
+            /** Quality Tier */
+            quality_tier: string;
+            /** Is Farmer */
+            is_farmer: boolean;
+            /** Is Deleted */
+            is_deleted: boolean;
+            state?: components["schemas"]["PlaceOut"] | null;
+            district?: components["schemas"]["PlaceOut"] | null;
+            /** Current Roles */
+            current_roles?: components["schemas"]["RoleOut"][];
+        };
+        /**
+         * PlaceOut
+         * @description A state or district, as much of it as a client needs to render a label.
+         */
+        PlaceOut: {
+            /** Id */
             id: number;
-            lgd_code?: number | null;
+            /** Lgd Code */
+            lgd_code: number;
+            /** Name */
             name: string;
+            /** Name Local */
             name_local?: string | null;
-            iso_code?: string | null;
-            /** Union Territory */
-            is_ut?: boolean;
         };
         /**
-         * @description * `prospect` - Prospect
-         *     * `active` - Active
-         *     * `dormant` - Dormant
-         *     * `defunct` - Defunct
-         *     * `merged` - Merged
-         *     * `blacklisted` - Blacklisted
-         * @enum {string}
+         * PreviewLineIn
+         * @description A line as the *preview* receives it — deliberately lenient.
+         *
+         *     🔴 Separate from `InvoiceLineIn` on purpose. The live preview fires on
+         *     every keystroke, so a quantity typed before a rate must render the document
+         *     as far as it goes: an unfilled field is not an invalid one, and answering
+         *     400 makes the preview look like a broken renderer.
+         *
+         *     Creating an invoice keeps the strict shape. Nothing rendered here is
+         *     saved, no number is allocated, and `compute_line` reads a missing figure as
+         *     zero — so the leniency buys a working preview and gives up nothing.
          */
-        StatusEnum: "prospect" | "active" | "dormant" | "defunct" | "merged" | "blacklisted";
-        TokenPair: {
-            access: string;
-            refresh: string;
-        };
-        TokenRefresh: {
-            readonly access: string;
-            refresh: string;
-        };
-        /**
-         * @description * `fpo` - FPO (Farmer Producer Organisation)
-         *     * `acs` - Cooperative society / PACS
-         *     * `sugar_mill` - Sugar mill
-         *     * `cooperative_federation` - Cooperative federation
-         *     * `input_dealer` - Input dealer
-         *     * `ngo_promoting_institution` - NGO / promoting institution
-         *     * `government_body` - Government body
-         *     * `private_company` - Private company
-         *     * `bank_nbfc` - Bank / NBFC
-         *     * `other` - Other
-         * @enum {string}
-         */
-        TypeEnum: "fpo" | "acs" | "sugar_mill" | "cooperative_federation" | "input_dealer" | "ngo_promoting_institution" | "government_body" | "private_company" | "bank_nbfc" | "other";
-        /** @description `GET /auth/me/` — identity, role, permissions and territory. */
-        User: {
-            readonly id: number;
-            /** Format: email */
-            readonly email: string;
-            readonly full_name: string;
+        PreviewLineIn: {
+            /** Line No */
+            line_no?: number | null;
             /**
-             * @description Primary role. Drives RLS scoping and the MFA requirement.
-             *
-             *     * `field_agent` - Field / BD Agent
-             *     * `bd_manager` - BD Manager
-             *     * `project_manager` - Project Manager
-             *     * `campaign_manager` - Campaign Manager
-             *     * `data_ops` - Data Ops Analyst
-             *     * `leadership` - Leadership
-             *     * `compliance` - Compliance Officer
-             *     * `admin` - System Admin
+             * Description
+             * @default
              */
-            readonly role: components["schemas"]["RoleEnum"];
-            /** @description LGD district codes this user may access. */
-            readonly district_ids: number[];
-            readonly is_cross_territory: boolean;
-            /** @description Set automatically for roles in MFA_REQUIRED_ROLES. */
-            readonly mfa_enforced: boolean;
-            readonly permissions: string[];
+            description: string;
+            /** Hsn Sac */
+            hsn_sac?: string | null;
+            /** Quantity */
+            quantity?: number | string | null;
+            /**
+             * Unit
+             * @default each
+             */
+            unit: string;
+            /** Rate */
+            rate?: number | string | null;
+            /**
+             * Rate Is Tax Inclusive
+             * @default false
+             */
+            rate_is_tax_inclusive: boolean;
+            /** Tax Rate Pct */
+            tax_rate_pct?: number | string | null;
+            /** Location Note */
+            location_note?: string | null;
         };
-        Village: {
-            readonly id: number;
-            lgd_code?: number | null;
+        /**
+         * PreviewRequest
+         * @description An invoice that does not exist yet, rendered as the document it would be.
+         *
+         *     🔴 The entity may be named either way, and that is not laziness.
+         *
+         *     The create screen holds `entity_code` ("TEPL") because that is what the
+         *     dropdown binds to; the register holds the row's UUID. Requiring only the
+         *     UUID meant the live preview posted `entity_code` and got a 400 on every
+         *     keystroke — a broken preview that looked like a flaky renderer. Accepting
+         *     both is one `or` here versus a reshape of the form's state.
+         */
+        PreviewRequest: {
+            /** Billing Entity */
+            billing_entity?: string | null;
+            /** Entity Code */
+            entity_code?: string | null;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /**
+             * Buyer Name
+             * @default
+             */
+            buyer_name: string;
+            /** Buyer Address */
+            buyer_address?: string | null;
+            /** Buyer Gstin */
+            buyer_gstin?: string | null;
+            /** Buyer State Code */
+            buyer_state_code?: string | null;
+            /**
+             * Tax Treatment
+             * @default igst
+             */
+            tax_treatment: string;
+            /**
+             * Tax Rate Pct
+             * @default 18.00
+             */
+            tax_rate_pct: number | string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["PreviewLineIn"][];
+        };
+        /** PriorityOut */
+        PriorityOut: {
+            /** Invoice Id */
+            invoice_id: string;
+            /** Score */
+            score: number;
+            /** Band */
+            band: string;
+            /** Factors */
+            factors: {
+                [key: string]: unknown;
+            }[];
+            /** Disclaimer */
+            disclaimer: string;
+        };
+        /** PromiseCreate */
+        PromiseCreate: {
+            /**
+             * Promised On
+             * Format: date
+             */
+            promised_on: string;
+            /** Amount */
+            amount?: number | string | null;
+            /** Note */
+            note?: string | null;
+            /** Contact Name */
+            contact_name?: string | null;
+        };
+        /** PromiseOut */
+        PromiseOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /**
+             * Promised On
+             * Format: date
+             */
+            promised_on: string;
+            /** Promised Amount */
+            promised_amount: string | null;
+            /** Note */
+            note: string | null;
+            /** Contact Name */
+            contact_name: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * ProposalConfirm
+         * @description 🔴 The hash is required, not optional.
+         *
+         *     A confirm endpoint that accepts a missing hash has an opt-out, and an
+         *     opt-out from "confirm exactly this" is the same as not having it.
+         */
+        ProposalConfirm: {
+            /** Proposal Sha256 */
+            proposal_sha256: string;
+        };
+        /**
+         * ProposalCreate
+         * @description Ask the copilot for a draft.
+         *
+         *     🔴 `billing_entity` names the issuing company, and it is checked against
+         *     the caller's scope rather than trusted. `invoice` targets an existing
+         *     unnumbered draft; omit it to propose a new one.
+         */
+        ProposalCreate: {
+            /** Request */
+            request: string;
+            /**
+             * Billing Entity
+             * Format: uuid
+             */
+            billing_entity: string;
+            /** Invoice */
+            invoice?: string | null;
+            /**
+             * Action
+             * @default create_draft
+             */
+            action: string;
+        };
+        /** ProposalOut */
+        ProposalOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** Action */
+            action: string;
+            /**
+             * Billing Entity
+             * Format: uuid
+             */
+            billing_entity: string;
+            /** Invoice */
+            invoice: string | null;
+            /** Proposal Sha256 */
+            proposal_sha256: string;
+            /** Model */
+            model: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Prompt Version */
+            prompt_version: string | null;
+            /** Evidence */
+            evidence: unknown[];
+            /** Before Snapshot */
+            before_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Proposed Patch */
+            proposed_patch: {
+                [key: string]: unknown;
+            };
+            /** Warnings */
+            warnings: unknown[];
+            /** Missing Fields */
+            missing_fields: string[];
+            /** Confidence */
+            confidence: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Applied At */
+            applied_at: string | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Diff
+             * @default []
+             */
+            diff: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ProposalReject */
+        ProposalReject: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** RefreshRequest */
+        RefreshRequest: {
+            /** Refresh */
+            refresh: string;
+        };
+        /** RegisterSummary */
+        RegisterSummary: {
+            /** Count */
+            count: number;
+            /** Taxable Value */
+            taxable_value: string;
+            /** Tax Amount */
+            tax_amount: string;
+            /** Total Value */
+            total_value: string;
+            /** Amount Received */
+            amount_received: string;
+            /** Amount Outstanding */
+            amount_outstanding: string;
+            /** Total Area Ha */
+            total_area_ha: string;
+            display: components["schemas"]["SummaryDisplay"];
+        };
+        /** ReminderConfirm */
+        ReminderConfirm: {
+            /** Preview Sha256 */
+            preview_sha256: string;
+        };
+        /** ReminderPolicyCreate */
+        ReminderPolicyCreate: {
+            /**
+             * Billing Entity
+             * Format: uuid
+             */
+            billing_entity: string;
+            /** Name */
             name: string;
+            /**
+             * Channel
+             * @default email
+             */
+            channel: string;
+            /**
+             * Trigger Days
+             * @default [
+             *       7,
+             *       15,
+             *       30
+             *     ]
+             */
+            trigger_days: number[];
+            /** Template Body */
+            template_body?: string | null;
+            /**
+             * Quiet Hour Start
+             * @default 20
+             */
+            quiet_hour_start: number;
+            /**
+             * Quiet Hour End
+             * @default 9
+             */
+            quiet_hour_end: number;
+            /**
+             * Timezone
+             * @default Asia/Kolkata
+             */
+            timezone: string;
+            /**
+             * Min Days Between
+             * @default 7
+             */
+            min_days_between: number;
+            /**
+             * Max Per Invoice
+             * @default 4
+             */
+            max_per_invoice: number;
+        };
+        /** ReminderPolicyOut */
+        ReminderPolicyOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Billing Entity
+             * Format: uuid
+             */
+            billing_entity: string;
+            /** Name */
+            name: string;
+            /** Channel */
+            channel: string;
+            /** Trigger Days */
+            trigger_days: number[];
+            /** Template Version */
+            template_version: string;
+            /** Quiet Hour Start */
+            quiet_hour_start: number;
+            /** Quiet Hour End */
+            quiet_hour_end: number;
+            /** Timezone */
+            timezone: string;
+            /** Min Days Between */
+            min_days_between: number;
+            /** Max Per Invoice */
+            max_per_invoice: number;
+            /** Autosend Enabled */
+            autosend_enabled: boolean;
+            /** Autosend Max Per Run */
+            autosend_max_per_run: number;
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** ReminderRunOut */
+        ReminderRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Policy Id */
+            policy_id: string | null;
+            /** Status */
+            status: string;
+            /** Preview Sha256 */
+            preview_sha256: string;
+            /** Candidates */
+            candidates: {
+                [key: string]: unknown;
+            }[];
+            /** Skipped */
+            skipped: {
+                [key: string]: unknown;
+            }[];
+            /** Expires At */
+            expires_at: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** ReminderRunResult */
+        ReminderRunResult: {
+            run: components["schemas"]["ReminderRunOut"];
+            /** Queued */
+            queued: number;
+            /** Reminders */
+            reminders: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * RoleCloseIn
+         * @description 🔴 Closing a role, which is the only way a role ends.
+         *
+         *     There is no delete endpoint for a role and this is the reason: the
+         *     register has to answer who held a post on a past date, and a deleted row
+         *     answers "nobody, ever".
+         */
+        RoleCloseIn: {
+            /**
+             * Valid To
+             * Format: date
+             */
+            valid_to: string;
+        };
+        /** RoleIn */
+        RoleIn: {
+            /**
+             * Organisation Id
+             * Format: uuid
+             */
+            organisation_id: string;
+            /** Role */
+            role: string;
+            /** Designation Text */
+            designation_text?: string | null;
+            /** Department */
+            department?: string | null;
+            /**
+             * Is Primary Contact
+             * @default false
+             */
+            is_primary_contact: boolean;
+            /**
+             * Is Decision Maker
+             * @default false
+             */
+            is_decision_maker: boolean;
+            /** Valid From */
+            valid_from?: string | null;
+            /** Source Id */
+            source_id?: number | null;
+        };
+        /**
+         * RoleOut
+         * @description A post held at an organisation.
+         */
+        RoleOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Organisation Id
+             * Format: uuid
+             */
+            organisation_id: string;
+            /** Organisation Name */
+            organisation_name?: string | null;
+            /** Role */
+            role: string;
+            /** Designation Text */
+            designation_text?: string | null;
+            /** Department */
+            department?: string | null;
+            /** Is Primary Contact */
+            is_primary_contact: boolean;
+            /** Is Decision Maker */
+            is_decision_maker: boolean;
+            /** Valid From */
+            valid_from?: string | null;
+            /** Valid To */
+            valid_to?: string | null;
+            /** Is Current */
+            is_current: boolean;
+            /** Source Id */
+            source_id?: number | null;
+        };
+        /** RowErrorOut */
+        RowErrorOut: {
+            /** Row Number */
+            row_number: number;
+            /** Error Code */
+            error_code: string;
+            /** Error Message */
+            error_message: string;
+            /** Raw */
+            raw: {
+                [key: string]: unknown;
+            };
+        };
+        /** SourceOut */
+        SourceOut: {
+            /** Id */
+            id: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Url */
+            url: string | null;
+            /** Legal Basis */
+            legal_basis: string;
+            /** Licence */
+            licence: string | null;
+            /** Contains Pii */
+            contains_pii: boolean;
+            /** Is Approved */
+            is_approved: boolean;
+            /** Approved By */
+            approved_by: string | null;
+            /** Approved At */
+            approved_at: string | null;
+            /** Refresh Cadence */
+            refresh_cadence: string | null;
+            /** Notes */
+            notes: string | null;
+        };
+        /** StateOut */
+        StateOut: {
+            /** Id */
+            id: number;
+            /** Lgd Code */
+            lgd_code: number;
+            /** Name */
+            name: string;
+            /** Name Local */
             name_local?: string | null;
-            block?: number | null;
-            district: number;
-            readonly district_name: string;
+            /** Iso Code */
+            iso_code?: string | null;
+        };
+        /** SummaryDisplay */
+        SummaryDisplay: {
+            /** Taxable */
+            taxable: string;
+            /** Tax */
+            tax: string;
+            /** Total */
+            total: string;
+            /** Received */
+            received: string;
+            /** Outstanding */
+            outstanding: string;
+        };
+        /** TaxCodeOut */
+        TaxCodeOut: {
+            /** Id */
+            id: string;
+            /** Code */
+            code: string;
+            /** Code Kind */
+            code_kind: string;
+            /** Description */
+            description: string;
+            /** Gst Rate Pct */
+            gst_rate_pct: string | null;
+            /** Jurisdiction */
+            jurisdiction: string;
+            /** Effective From */
+            effective_from: string;
+            /** Effective To */
+            effective_to: string | null;
+            /** Review Status */
+            review_status: string;
+            /** Is Verified */
+            is_verified: boolean;
+            citation: components["schemas"]["Citation"];
+            /** Keywords */
+            keywords: string[];
+            /** Notes */
+            notes: string | null;
+            /** Label */
+            label: string;
+        };
+        /**
+         * TaxCodeSuggestion
+         * @description The same record, returned as a suggestion against a line description.
+         */
+        TaxCodeSuggestion: {
+            /** Id */
+            id: string;
+            /** Code */
+            code: string;
+            /** Code Kind */
+            code_kind: string;
+            /** Description */
+            description: string;
+            /** Gst Rate Pct */
+            gst_rate_pct: string | null;
+            /** Jurisdiction */
+            jurisdiction: string;
+            /** Effective From */
+            effective_from: string;
+            /** Effective To */
+            effective_to: string | null;
+            /** Review Status */
+            review_status: string;
+            /** Is Verified */
+            is_verified: boolean;
+            citation: components["schemas"]["Citation"];
+            /** Keywords */
+            keywords: string[];
+            /** Notes */
+            notes: string | null;
+            /** Label */
+            label: string;
+        };
+        /** TokenPair */
+        TokenPair: {
+            /** Access */
+            access: string;
+            /** Refresh */
+            refresh: string;
+        };
+        /** TraceLine */
+        TraceLine: {
+            /** Line No */
+            line_no: number;
+            /** Description */
+            description: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit */
+            unit: string;
+            /** Quantity Ha */
+            quantity_ha: string | null;
+            /** Rate */
+            rate: string;
+            /** Rate Is Tax Inclusive */
+            rate_is_tax_inclusive: boolean;
+            /** Taxable */
+            taxable: string;
+            /** Tax */
+            tax: string;
+            /** Total */
+            total: string;
+            /** Explanation */
+            explanation: string;
+        };
+        /** UseVerifiedResult */
+        UseVerifiedResult: {
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            verification: components["schemas"]["VerificationOut"];
+            /** Changes */
+            changes: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** UserOut */
+        UserOut: {
+            /** Id */
+            id: number;
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Role */
+            role: string;
+            /** District Ids */
+            district_ids: number[];
+            /** Is Cross Territory */
+            is_cross_territory: boolean;
+            /** Mfa Enforced */
+            mfa_enforced: boolean;
+            /**
+             * Mfa Satisfied
+             * @description Whether the token making this request has cleared the second factor.
+             */
+            mfa_satisfied: boolean;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+        /** VerificationCreate */
+        VerificationCreate: {
+            /**
+             * Billing Entity
+             * Format: uuid
+             */
+            billing_entity: string;
+            /** Gstin */
+            gstin: string;
+            /**
+             * Govt Uin
+             * @default false
+             */
+            govt_uin: boolean;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+        };
+        /** VerificationOut */
+        VerificationOut: {
+            /** Id */
+            id: string;
+            /** Gstin */
+            gstin: string;
+            /** Provider */
+            provider: string;
+            /** Provider Reference */
+            provider_reference: string | null;
+            /** Status */
+            status: string;
+            /** Is Verified */
+            is_verified: boolean;
+            /** Is Unavailable */
+            is_unavailable: boolean;
+            /** Legal Name */
+            legal_name: string | null;
+            /** Trade Name */
+            trade_name: string | null;
+            /** Registration Type */
+            registration_type: string | null;
+            /** Taxpayer Status */
+            taxpayer_status: string | null;
+            /** Effective From */
+            effective_from: string | null;
+            /** Cancellation Date */
+            cancellation_date: string | null;
+            /** Principal Address */
+            principal_address: string | null;
+            /** State Code */
+            state_code: string | null;
+            /** Checked At */
+            checked_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Age Days */
+            age_days: number;
+            /** Raw Response Sha256 */
+            raw_response_sha256: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Detail */
+            error_detail: string | null;
+            /** Label */
+            label: string;
+        };
+        /** VillageOut */
+        VillageOut: {
+            /** Id */
+            id: number;
+            /** Lgd Code */
+            lgd_code?: number | null;
+            /** Block Id */
+            block_id?: number | null;
+            /** District Id */
+            district_id?: number | null;
+            /** Name */
+            name: string;
+            /** Name Local */
+            name_local?: string | null;
+            /** Pincode */
             pincode?: string | null;
-            /** Format: decimal */
-            latitude?: string | null;
-            /** Format: decimal */
-            longitude?: string | null;
         };
     };
     responses: never;
@@ -919,7 +4675,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    auth_login_create: {
+    login_api_v1_auth_login__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -928,23 +4684,31 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Login"];
-                "application/x-www-form-urlencoded": components["schemas"]["Login"];
-                "multipart/form-data": components["schemas"]["Login"];
+                "application/json": components["schemas"]["LoginRequest"];
             };
         };
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Login"];
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    auth_logout_create: {
+    refresh_api_v1_auth_refresh__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -953,41 +4717,31 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LogoutRequest"];
-                "application/x-www-form-urlencoded": components["schemas"]["LogoutRequest"];
-                "multipart/form-data": components["schemas"]["LogoutRequest"];
+                "application/json": components["schemas"]["RefreshRequest"];
             };
         };
         responses: {
-            /** @description Refresh token blacklisted */
-            205: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    auth_me_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    auth_mfa_enrol_create: {
+    me_api_v1_auth_me__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -996,6 +4750,27 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+        };
+    };
+    mfa_enrol_api_v1_auth_mfa_enrol__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1006,7 +4781,7 @@ export interface operations {
             };
         };
     };
-    auth_mfa_verify_create: {
+    mfa_verify_api_v1_auth_mfa_verify__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1015,12 +4790,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerify"];
-                "application/x-www-form-urlencoded": components["schemas"]["MFAVerify"];
-                "multipart/form-data": components["schemas"]["MFAVerify"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1029,16 +4803,18 @@ export interface operations {
                     "application/json": components["schemas"]["TokenPair"];
                 };
             };
-            /** @description Invalid or expired code */
-            400: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
-    auth_password_change_create: {
+    logout_api_v1_auth_logout__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1047,236 +4823,74 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PasswordChange"];
-                "application/x-www-form-urlencoded": components["schemas"]["PasswordChange"];
-                "multipart/form-data": components["schemas"]["PasswordChange"];
+                "application/json": components["schemas"]["LogoutRequest"];
             };
         };
         responses: {
-            /** @description Changed; all sessions revoked */
+            /** @description Successful Response */
+            205: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    password_change_api_v1_auth_password_change__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-        };
-    };
-    auth_refresh_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TokenRefresh"];
-                "application/x-www-form-urlencoded": components["schemas"]["TokenRefresh"];
-                "multipart/form-data": components["schemas"]["TokenRefresh"];
-            };
-        };
-        responses: {
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TokenRefresh"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    blocks_list: {
+    organisation_list_api_v1_organisations__get: {
         parameters: {
             query?: {
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                /** @description Filter to one district id. */
-                district?: number;
-                /** @description Number of results to return per page. */
-                limit?: number;
-                /** @description Match against name or name_local. */
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedBlockList"];
-                };
-            };
-        };
-    };
-    blocks_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this block / tehsil. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Block"];
-                };
-            };
-        };
-    };
-    crops_list: {
-        parameters: {
-            query?: {
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                /** @description Number of results to return per page. */
-                limit?: number;
-                /** @description Match against name or code. */
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedCropList"];
-                };
-            };
-        };
-    };
-    crops_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this crop. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Crop"];
-                };
-            };
-        };
-    };
-    districts_list: {
-        parameters: {
-            query?: {
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                /** @description Number of results to return per page. */
-                limit?: number;
-                /** @description Match against name or name_local. */
-                q?: string;
-                /** @description Filter to one state id. */
-                state?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedDistrictList"];
-                };
-            };
-        };
-    };
-    districts_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this district. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["District"];
-                };
-            };
-        };
-    };
-    healthz_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Health"];
-                };
-            };
-        };
-    };
-    organisations_list: {
-        parameters: {
-            query?: {
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                district?: number;
-                /** @description Include soft-deleted rows. Off by default; nothing is hard-deleted. */
+                type?: string | null;
+                status?: string | null;
+                state?: number | null;
+                district?: number | null;
+                quality_tier?: string | null;
+                owner?: string | null;
+                member_count__gte?: number | null;
+                member_count__lte?: number | null;
+                q?: string | null;
                 include_deleted?: boolean;
-                /** @description Number of results to return per page. */
                 limit?: number;
-                member_count__gte?: number;
-                member_count__lte?: number;
-                /** @description Owner's user public_id. */
-                owner?: string;
-                /** @description Name, local name, alias, org code, CIN. */
-                q?: string;
-                /** @description gold | silver | bronze | quarantine */
-                quality_tier?: string;
-                state?: number;
-                /** @description core.org_status value. */
-                status?: string;
-                /** @description core.org_type value. */
-                type?: string;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -1284,20 +4898,30 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedOrganisationListList"];
+                    "application/json": components["schemas"]["OrganisationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    organisations_create: {
+    organisation_create_api_v1_organisations__post: {
         parameters: {
             query?: {
-                /** @description Override duplicate blocking. */
+                /** @description Create despite duplicates. Recorded. */
                 force?: boolean;
             };
             header?: never;
@@ -1306,12 +4930,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrganisationDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["OrganisationDetail"];
-                "multipart/form-data": components["schemas"]["OrganisationDetail"];
+                "application/json": components["schemas"]["OrganisationCreate"];
             };
         };
         responses: {
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1320,20 +4943,29 @@ export interface operations {
                     "application/json": components["schemas"]["OrganisationDetail"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    organisations_retrieve: {
+    organisation_detail_api_v1_organisations__organisation_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this organisation. */
-                id: string;
+                organisation_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1342,26 +4974,33 @@ export interface operations {
                     "application/json": components["schemas"]["OrganisationDetail"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    organisations_update: {
+    organisation_replace_api_v1_organisations__organisation_id__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this organisation. */
-                id: string;
+                organisation_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OrganisationDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["OrganisationDetail"];
-                "multipart/form-data": components["schemas"]["OrganisationDetail"];
+                "application/json": components["schemas"]["OrganisationUpdate"];
             };
         };
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1370,47 +5009,62 @@ export interface operations {
                     "application/json": components["schemas"]["OrganisationDetail"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    organisations_destroy: {
+    organisation_delete_api_v1_organisations__organisation_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this organisation. */
-                id: string;
+                organisation_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    organisations_partial_update: {
+    organisation_update_api_v1_organisations__organisation_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this organisation. */
-                id: string;
+                organisation_id: string;
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["PatchedOrganisationDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["PatchedOrganisationDetail"];
-                "multipart/form-data": components["schemas"]["PatchedOrganisationDetail"];
+                "application/json": components["schemas"]["OrganisationUpdate"];
             };
         };
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1419,9 +5073,55 @@ export interface operations {
                     "application/json": components["schemas"]["OrganisationDetail"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    organisations_bulk_assign_create: {
+    invoice_list_api_v1_invoices__get: {
+        parameters: {
+            query?: {
+                entity_code?: string | null;
+                financial_year?: string | null;
+                status?: string | null;
+                outstanding?: boolean;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_create_api_v1_invoices__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1430,60 +5130,564 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BulkAssign"];
-                "application/x-www-form-urlencoded": components["schemas"]["BulkAssign"];
-                "multipart/form-data": components["schemas"]["BulkAssign"];
+                "application/json": components["schemas"]["InvoiceCreate"];
             };
         };
         responses: {
-            /** @description No response body */
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_summary_api_v1_invoices_summary__get: {
+        parameters: {
+            query?: {
+                entity_code?: string | null;
+                financial_year?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_detail_api_v1_invoices__invoice_id___get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_replace_api_v1_invoices__invoice_id___put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_delete_api_v1_invoices__invoice_id___delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    organisations_check_duplicates_create: {
+    invoice_update_api_v1_invoices__invoice_id___patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    state_list_api_v1_states__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StateOut"][];
+                };
+            };
+        };
+    };
+    district_list_api_v1_districts__get: {
         parameters: {
             query?: {
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                /** @description Number of results to return per page. */
+                state?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistrictOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    block_list_api_v1_blocks__get: {
+        parameters: {
+            query?: {
+                district?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    village_list_api_v1_villages__get: {
+        parameters: {
+            query?: {
+                district?: number | null;
+                block?: number | null;
+                pincode?: string | null;
+                q?: string | null;
                 limit?: number;
             };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VillageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    state_detail_api_v1_states__state_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                state_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    district_detail_api_v1_districts__district_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                district_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistrictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    block_detail_api_v1_blocks__block_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                block_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    village_detail_api_v1_villages__village_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                village_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VillageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crop_list_api_v1_crops__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropOut"][];
+                };
+            };
+        };
+    };
+    crop_detail_api_v1_crops__crop_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                crop_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    organisation_check_duplicates_api_v1_organisations_check_duplicates__post: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DuplicateCheck"];
-                "application/x-www-form-urlencoded": components["schemas"]["DuplicateCheck"];
-                "multipart/form-data": components["schemas"]["DuplicateCheck"];
+                "application/json": components["schemas"]["DuplicateCheckRequest"];
             };
         };
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedDuplicateCandidateList"];
+                    "application/json": components["schemas"]["DuplicateCandidateOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    states_list: {
+    organisation_bulk_assign_api_v1_organisations_bulk_assign__post: {
         parameters: {
-            query?: {
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                /** @description Number of results to return per page. */
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkAssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    farmer_list_api_v1_farmers__get: {
+        parameters: {
+            query: {
+                /** @description Required partition key */
+                state: number;
+                district?: number | null;
+                primary_fpo?: string | null;
+                quality_tier?: string | null;
+                q?: string | null;
+                include_deleted?: boolean;
                 limit?: number;
-                /** @description Match against name or name_local. */
-                q?: string;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -1491,53 +5695,108 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedStateList"];
+                    "application/json": components["schemas"]["FarmerPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    states_retrieve: {
+    farmer_detail_api_v1_farmers__state_id___farmer_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A unique value identifying this state / UT. */
-                id: number;
+                state_id: number;
+                farmer_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["State"];
+                    "application/json": components["schemas"]["FarmerDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    villages_list: {
+    farmer_import_csv_api_v1_farmers_import_csv__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_farmer_import_csv_api_v1_farmers_import_csv__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmerImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_list_api_v1_people__get: {
         parameters: {
             query?: {
-                /** @description Block id. */
-                block?: number;
-                /** @description The pagination cursor value. */
-                cursor?: string;
-                /** @description District id. */
-                district?: number;
-                /** @description Number of results to return per page. */
+                organisation?: string | null;
+                role?: string | null;
+                state?: number | null;
+                district?: number | null;
+                quality_tier?: string | null;
+                is_farmer?: boolean | null;
+                din?: string | null;
+                current_roles_only?: boolean;
+                q?: string | null;
+                include_deleted?: boolean;
+                /** @description Required (R10) when the result exceeds the bulk threshold. Recorded against your account in audit.data_access_log. */
+                reason?: string | null;
                 limit?: number;
-                /** @description Six-digit pincode. */
-                pincode?: string;
-                /** @description Match against name or name_local. */
-                q?: string;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -1545,34 +5804,2227 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedVillageList"];
+                    "application/json": components["schemas"]["PersonPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    villages_retrieve: {
+    person_create_api_v1_people__post: {
         parameters: {
             query?: never;
             header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_detail_api_v1_people__person_id__get: {
+        parameters: {
+            query?: {
+                /** @description Show full contact values. Requires the contact.view_full capability (R9); the view is written to audit.data_access_log. */
+                unmask?: boolean;
+            };
+            header?: never;
             path: {
-                /** @description A unique integer value identifying this village. */
-                id: number;
+                person_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Village"];
+                    "application/json": components["schemas"]["PersonDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_update_api_v1_people__person_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_role_create_api_v1_people__person_id__roles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_role_close_api_v1_people__person_id__roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCloseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_contact_list_api_v1_people__person_id__contact_points_get: {
+        parameters: {
+            query?: {
+                unmask?: boolean;
+            };
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactPointOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    person_contact_create_api_v1_people__person_id__contact_points_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactPointIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactPointOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    organisation_people_api_v1_people_by_organisation__organisation_id__get: {
+        parameters: {
+            query?: {
+                current_only?: boolean;
+            };
+            header?: never;
+            path: {
+                organisation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_create_api_v1_imports__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_dry_run_api_v1_imports__batch_id__dry_run__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_legal_basis_api_v1_imports__batch_id__legal_basis__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegalBasisIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_commit_api_v1_imports__batch_id__commit__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_errors_api_v1_imports__batch_id__errors__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RowErrorOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_detail_api_v1_imports__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    source_list_api_v1_data_quality_sources__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceOut"][];
+                };
+            };
+        };
+    };
+    source_approve_api_v1_data_quality_sources__source_id__approve__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    contradiction_list_api_v1_data_quality_contradictions__get: {
+        parameters: {
+            query?: {
+                open_only?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContradictionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    contradiction_resolve_api_v1_data_quality_contradictions__contradiction_id__resolve__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contradiction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContradictionResolution"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContradictionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_issue_api_v1_invoices__invoice_id__issue__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IssueRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_cancel_api_v1_invoices__invoice_id__cancel__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string | null;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_payment_api_v1_invoices__invoice_id__payments__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billing_entity_list_api_v1_billing_entities__get: {
+        parameters: {
+            query?: {
+                current?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingEntityOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    billing_entity_detail_api_v1_billing_entities__entity_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingEntityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_html_api_v1_invoices__invoice_id__html__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_pdf_api_v1_invoices__invoice_id__pdf__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_preview_api_v1_invoices_preview__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_extract_api_v1_invoices_extract__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_invoice_extract_api_v1_invoices_extract__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_extract_accept_api_v1_invoices_extract__extraction_id__accept__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                extraction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_invoice_extract_accept_api_v1_invoices_extract__extraction_id__accept__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copilot_proposal_create_api_v1_invoice_copilot_proposals__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copilot_proposal_get_api_v1_invoice_copilot_proposals__proposal_id___get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copilot_proposal_confirm_api_v1_invoice_copilot_proposals__proposal_id__confirm__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copilot_proposal_apply_api_v1_invoice_copilot_proposals__proposal_id__apply__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copilot_proposal_reject_api_v1_invoice_copilot_proposals__proposal_id__reject__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalReject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copilot_explain_total_api_v1_invoice_copilot_invoices__invoice_id__explain__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculationTrace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_checks_run_api_v1_invoices__invoice_id__checks__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_checks_acknowledge_api_v1_invoices__invoice_id__checks_acknowledge__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receivables_ageing_api_v1_receivables_ageing__get: {
+        parameters: {
+            query?: {
+                organisation?: string | null;
+                entity_code?: string | null;
+                as_of?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgeingReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receivables_priority_api_v1_receivables_priority__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriorityOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payment_request_list_api_v1_invoices__invoice_id__payment_requests__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequestOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payment_request_create_api_v1_invoices__invoice_id__payment_requests__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payment_promise_create_api_v1_invoices__invoice_id__promises__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromiseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromiseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payment_reconciliation_queue_api_v1_payment_reconciliation__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delivery_preview_api_v1_invoices__invoice_id__deliveries_preview__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delivery_history_api_v1_invoices__invoice_id__deliveries__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delivery_send_api_v1_invoices__invoice_id__deliveries__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliverySendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reminder_policy_list_api_v1_reminder_policies__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPolicyOut"][];
+                };
+            };
+        };
+    };
+    reminder_policy_create_api_v1_reminder_policies__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderPolicyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reminder_policy_autosend_api_v1_reminder_policies__policy_id__autosend__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutosendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reminder_run_preview_api_v1_reminder_runs_preview__post: {
+        parameters: {
+            query: {
+                policy: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reminder_run_confirm_api_v1_reminder_runs__run_id__confirm__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderRunResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payment_webhook_api_v1_payment_webhooks__provider___post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gstin_local_check_api_v1_gstin_check__get: {
+        parameters: {
+            query: {
+                value: string;
+                govt_uin?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalCheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gstin_verification_create_api_v1_gstin_verifications__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerificationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gstin_verification_get_api_v1_gstin_verifications__verification_id___get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                verification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_gstin_check_api_v1_invoices__invoice_id__gstin_check__post: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstinCheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_gstin_use_verified_api_v1_invoices__invoice_id__gstin_check_use_verified__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UseVerifiedResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_gstin_override_api_v1_invoices__invoice_id__gstin_check_override__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GstinOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstinCheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatsapp_verify_api_v1_messaging_webhooks_whatsapp__get: {
+        parameters: {
+            query?: {
+                "hub.mode"?: string;
+                "hub.verify_token"?: string;
+                "hub.challenge"?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatsapp_inbound_api_v1_messaging_webhooks_whatsapp__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    tax_code_list_api_v1_tax_codes__get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                on_date?: string | null;
+                approved_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tax_code_suggest_api_v1_tax_codes_suggest__get: {
+        parameters: {
+            query: {
+                description: string;
+                on_date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeSuggestion"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tax_code_seed_api_v1_tax_codes_seed__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number | string;
+                    };
+                };
+            };
+        };
+    };
+    tax_code_approve_api_v1_tax_codes__record_id__approve__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_tally_api_v1_exports_tally_csv_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+                entity_code?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_zoho_api_v1_exports_zoho_csv_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+                entity_code?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_gstr1_working_paper_api_v1_exports_gstr1_working_paper__get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+                entity_code?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gstr1WorkingPaper"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_evaluation_summary_api_v1_invoice_ai_evaluations_summary__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    healthz_api_v1_healthz__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    readyz_api_v1_readyz__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };

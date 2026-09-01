@@ -1,0 +1,323 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ invoice.invoice_no or 'Draft invoice' }}{% endblock %}
+{% block content %}
+
+<header class="page">
+  <h1>{{ invoice.invoice_no or '— draft —' }}</h1>
+  <span class="sub">{{ status_chip(invoice.status) }} {{ invoice.entity_code }} ·
+    template {{ invoice.template_code }}</span>
+</header>
+
+{% if live.blocking %}
+<div class="notice bad">
+  <strong>{{ live.blocking | length }}</strong> check{{ '' if live.blocking | length == 1 else 's' }}
+  currently block issue:
+  <ul style="margin:6px 0 0">
+    {% for r in live.blocking %}<li><strong>{{ r.title }}</strong> — {{ r.explanation }}</li>{% endfor %}
+  </ul>
+</div>
+{% elif live.warnings %}
+<div class="notice warn">
+  {{ live.warnings | length }} warning{{ '' if live.warnings | length == 1 else 's' }} —
+  nothing blocks issue.
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="stat"><div class="n">{{ invoice.total_value | inr }}</div><div class="k">Invoice total</div></div>
+  <div class="stat"><div class="n">{{ invoice.amount_received | inr }}</div><div class="k">Received</div></div>
+  <div class="stat"><div class="n">{{ invoice.amount_outstanding | inr }}</div><div class="k">Outstanding</div></div>
+</div>
+
+<div class="card">
+  <h2>Document</h2>
+  <div class="body">
+    <dl class="kv">
+      <dt>Buyer</dt>
+      <dd>
+        {% if organisation %}
+          <a href="/admin/organisations/{{ organisation.id }}">{{ invoice.buyer_name }}</a>
+        {% else %}
+          {{ invoice.buyer_name }}
+          <div class="muted">🔴 Not linked to a registry customer — this is how one
+            customer's GSTIN ended up recorded two ways in the historical data.</div>
+        {% endif %}
+      </dd>
+      <dt>Buyer GSTIN</dt><dd><code>{{ invoice.buyer_gstin | mask_gstin }}</code>
+        {% if invoice.buyer_is_govt_uin %}{{ chip('government UIN', 'mute') }}{% endif %}</dd>
+      <dt>Buyer state</dt><dd>{{ invoice.buyer_state_code or '—' }}</dd>
+      <dt>Place of supply</dt><dd>{{ invoice.place_of_supply_state_code or '—' }}</dd>
+      <dt>Invoice date</dt><dd>{{ invoice.invoice_date | when(with_time=False) }}</dd>
+      <dt>Due date</dt>
+      <dd>{{ invoice.due_date | when(with_time=False) if invoice.due_date else '— none set —' }}</dd>
+      <dt>Financial year</dt><dd>{{ invoice.financial_year or '—' }}</dd>
+      <dt>Tax treatment</dt>
+      <dd>{{ invoice.tax_treatment }} at {{ invoice.tax_rate_pct }}%
+        <div class="muted">🔴 Selected by a person. INVOICE.md §5.4 is unresolved
+          on whether some billing is grant disbursement rather than taxable supply.</div>
+      </dd>
+      {% if invoice.buyer_order_no %}<dt>Buyer order</dt><dd>{{ invoice.buyer_order_no }}</dd>{% endif %}
+      {% if invoice.work_order_ref %}<dt>Work order</dt><dd>{{ invoice.work_order_ref }}</dd>{% endif %}
+      {% if invoice.letter_ref %}<dt>Letter ref</dt><dd>{{ invoice.letter_ref }}</dd>{% endif %}
+      <dt>Amount in words</dt><dd>{{ invoice.amount_in_words or '—' }}</dd>
+      {% if invoice.issued_at %}<dt>Issued</dt><dd>{{ invoice.issued_at | when }}</dd>{% endif %}
+      {% if invoice.cancelled_at %}
+      <dt>Cancelled</dt>
+      <dd>{{ invoice.cancelled_at | when }}
+        <div class="muted">{{ invoice.cancellation_reason }}</div>
+        <div class="muted">🔴 The number is burned, never reissued.</div>
+      </dd>
+      {% endif %}
+      <dt>PDF hash</dt>
+      <dd>
+        {% if invoice.pdf_sha256 %}
+          <code>{{ invoice.pdf_sha256.hex()[:24] }}…</code>
+          <div class="muted">What lets you prove the PDF you hold is the PDF you sent.</div>
+        {% else %}<span class="muted">not generated</span>{% endif %}
+      </dd>
+    </dl>
+    <p style="margin-bottom:0">
+      <a class="btn ghost small" href="/api/v1/invoices/{{ invoice.id }}/html" target="_blank">View document</a>
+      <a class="btn ghost small" href="/api/v1/invoice-copilot/invoices/{{ invoice.id }}/explain/" target="_blank">Explain this total</a>
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Lines</h2>
+  <div class="scroll"><table>
+    <thead>
+      <tr><th>#</th><th>Description</th><th>HSN/SAC</th><th class="num">Quantity</th>
+          <th class="num">Hectares</th><th class="num">Rate</th><th class="num">Taxable</th>
+          <th class="num">Tax</th><th class="num">Total</th></tr>
+    </thead>
+    <tbody>
+      {% for line in invoice.lines %}
+      <tr>
+        <td class="muted">{{ line.line_no }}</td>
+        <td>{{ line.description }}
+          {% if line.rate_is_tax_inclusive %}
+            <div class="muted">{{ chip('rate includes GST', 'warn') }}</div>
+          {% endif %}
+          {% if line.location_note %}<div class="muted">{{ line.location_note }}</div>{% endif %}
+        </td>
+        <td><code>{{ line.hsn_sac or '—' }}</code></td>
+        <td class="num">{{ line.quantity }} {{ line.unit }}</td>
+        <td class="num muted">{{ line.quantity_ha or '—' }}</td>
+        <td class="num">{{ line.rate | inr }}</td>
+        <td class="num">{{ line.line_taxable_value | inr }}</td>
+        <td class="num">{{ line.line_tax_amount | inr }}</td>
+        <td class="num">{{ line.line_total | inr }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="empty">No lines.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="font-weight:600; background:#fbfcfb">
+        <td colspan="6">Total</td>
+        <td class="num">{{ invoice.taxable_value | inr }}</td>
+        <td class="num">{{ invoice.tax_amount | inr }}</td>
+        <td class="num">{{ invoice.total_value | inr }}</td>
+      </tr>
+    </tfoot>
+  </table></div>
+  <div class="pager">
+    🔴 All area in hectares. Acres and square kilometres are input conveniences;
+    <code>quantity_ha</code> is a generated column, so it cannot drift from the
+    quantity it derives from.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Pre-issue checks · current state</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Severity</th><th>Check</th><th>Explanation</th><th>Blocks issue</th></tr></thead>
+    <tbody>
+      {% for r in live.results %}
+      <tr>
+        <td>
+          {{ chip(r.severity, 'bad' if r.severity == 'error' else ('warn' if r.severity == 'warning' else 'mute')) }}
+          {% if r.not_available %}{{ chip('not checked', 'mute') }}{% endif %}
+        </td>
+        <td class="nowrap"><code>{{ r.code }}</code><div>{{ r.title }}</div></td>
+        <td class="muted">{{ r.explanation }}</td>
+        <td>{{ chip('blocks', 'bad') if r.blocks_issue else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">Every check passes.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="pager">
+    🔴 A check marked “not checked” is not a pass. Operation logs land in
+    Phase 3 and the satellite cross-check in Phase 5; until then those checks
+    say so rather than skipping silently.
+  </div>
+</div>
+
+{% if check_runs %}
+<div class="card">
+  <h2>Check history</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Ran</th><th class="num">Blocking</th><th class="num">Warnings</th>
+      <th>Invoice fingerprint</th><th></th></tr></thead>
+    <tbody>
+      {% for run in check_runs %}
+      <tr>
+        <td class="nowrap">{{ run.ran_at | when }}</td>
+        <td class="num">{{ run.blocking_count }}</td>
+        <td class="num">{{ run.warning_count }}</td>
+        <td><code>{{ run.invoice_sha256.hex()[:16] }}…</code></td>
+        <td>{{ chip('issue evidence', 'ok') if run.is_issue_evidence else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if gstin_checks %}
+<div class="card">
+  <h2>GSTIN evidence · immutable</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>GSTIN</th><th>Local</th><th>Live</th><th>Blocking</th>
+      <th>Override</th><th>Recorded</th></tr></thead>
+    <tbody>
+      {% for c in gstin_checks %}
+      <tr>
+        <td><code>{{ c.checked_gstin }}</code></td>
+        <td>{{ status_chip(c.local_result) }}</td>
+        <td>{{ status_chip(c.live_status) if c.live_status else '—' }}</td>
+        <td class="muted">{{ c.blocking_reasons | join(', ') or '—' }}</td>
+        <td>
+          {% if c.override_by %}
+            {{ chip('overridden', 'warn') }}
+            <div class="muted">{{ c.override_reason }}</div>
+            <div class="muted">{{ c.override_at | when }}</div>
+          {% else %}—{% endif %}
+        </td>
+        <td class="muted nowrap">{{ c.created_at | when }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="pager">
+    🔴 Re-verifying next year writes a new verification row; what this document
+    was checked against does not change.
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Payments</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Received</th><th class="num">Amount</th><th>Mode</th><th>Reference</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for p in invoice.payments %}
+      <tr>
+        <td class="nowrap">{{ p.received_on | when(with_time=False) }}</td>
+        <td class="num">{{ p.amount | inr }}</td>
+        <td class="muted">{{ p.mode or '—' }}</td>
+        <td class="muted">{{ p.reference or '—' }}</td>
+        <td class="muted">{{ p.note | truncate_text(40) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">Nothing received.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% if payment_requests %}
+<div class="card">
+  <h2>Payment requests</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Provider</th><th class="num">Amount</th><th>Status</th><th>Reference</th><th>Created</th></tr></thead>
+    <tbody>
+      {% for r in payment_requests %}
+      <tr>
+        <td>{{ r.provider }}</td>
+        <td class="num">{{ r.amount | inr }}</td>
+        <td>{{ status_chip(r.status) }}</td>
+        <td class="muted"><code>{{ r.provider_reference or '—' }}</code></td>
+        <td class="muted nowrap">{{ r.created_at | when }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="pager">🔴 A payment request is not a payment. Only a human-entered
+    receipt or a signed, matched gateway webhook creates one.</div>
+</div>
+{% endif %}
+
+{% if promises %}
+<div class="card">
+  <h2>Promised payments</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Promised for</th><th class="num">Amount</th><th>Contact</th><th>Note</th><th>Recorded</th></tr></thead>
+    <tbody>
+      {% for p in promises %}
+      <tr>
+        <td class="nowrap">{{ p.promised_on | when(with_time=False) }}</td>
+        <td class="num">{{ p.promised_amount | inr }}</td>
+        <td class="muted">{{ p.contact_name or '—' }}</td>
+        <td class="muted">{{ p.note | truncate_text(46) }}</td>
+        <td class="muted nowrap">{{ p.created_at | ago }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if deliveries %}
+<div class="card">
+  <h2>Deliveries</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Channel</th><th>Recipient</th><th>Status</th><th class="num">Attempts</th>
+      <th>PDF hash</th><th>Confirmed</th><th>Sent</th></tr></thead>
+    <tbody>
+      {% for d in deliveries %}
+      <tr>
+        <td>{{ d.channel }}{% if d.reminder_id %} {{ chip('reminder', 'mute') }}{% endif %}</td>
+        <td>{{ d.recipient | mask_email }}</td>
+        <td>{{ status_chip(d.status) }}
+          {% if d.error_detail %}<div class="muted">{{ d.error_detail | truncate_text(44) }}</div>{% endif %}
+        </td>
+        <td class="num">{{ d.attempts }}</td>
+        <td><code>{{ d.pdf_sha256.hex()[:14] ~ '…' if d.pdf_sha256 else '—' }}</code></td>
+        <td class="muted nowrap">{{ d.confirmed_at | when }}</td>
+        <td class="muted nowrap">{{ d.sent_at | when if d.sent_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if proposals %}
+<div class="card">
+  <h2>AI proposals against this invoice</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Action</th><th>Status</th><th>Model</th><th class="num">Confidence</th>
+      <th>Created</th><th>Confirmed</th></tr></thead>
+    <tbody>
+      {% for p in proposals %}
+      <tr>
+        <td><code>{{ p.action }}</code></td>
+        <td>{{ status_chip(p.status) }}
+          {% if p.error %}<div class="muted">{{ p.error | truncate_text(40) }}</div>{% endif %}
+        </td>
+        <td class="muted">{{ p.model or '—' }}</td>
+        <td class="num">{{ confidence_chip(p.confidence) }}</td>
+        <td class="muted nowrap">{{ p.created_at | ago }}</td>
+        <td class="muted nowrap">{{ p.confirmed_at | when if p.confirmed_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% endblock %}

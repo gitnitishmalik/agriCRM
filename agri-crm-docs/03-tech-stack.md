@@ -7,20 +7,21 @@
 | Database | PostgreSQL + PostGIS + pg_trgm | 16.x / 3.4 |
 | Cache, queue broker, rate limiter | Redis | 7.x |
 | Object storage | AWS S3 (ap-south-1) | — |
-| Backend framework | Django + Django REST Framework | 5.0 / 3.15 |
+| Backend framework | **FastAPI + SQLAlchemy 2 (async) + Pydantic v2** | 0.115+ / 2.0 / 2.x |
 | Async workers | Celery + Celery Beat | 5.4 |
 | Scraping / collectors | Scrapy + Playwright (only where JS rendering is required) | 2.11 |
 | Data processing | pandas + Polars for large imports | — |
 | Entity resolution | `dedupe` / `recordlinkage` + Postgres trigram pre-blocking | — |
-| API docs | drf-spectacular (OpenAPI 3.1) | — |
-| Frontend | React + TypeScript + Vite | 18 / 5.x / 5.x |
+| API docs | FastAPI's own OpenAPI 3.1 output | — |
+| Frontend | React + TypeScript + Vite | 19 / 5.x / 7.x |
 | Server state | TanStack Query | 5.x |
 | UI components | shadcn/ui + Tailwind CSS | — |
 | Data grid | AG Grid Community | 32.x |
 | Maps | MapLibre GL JS + self-hosted tiles | 4.x |
 | Charts | Recharts | 2.x |
 | Mobile | React Native (Expo) + WatermelonDB or expo-sqlite | SDK 51+ |
-| Auth | Django SimpleJWT + TOTP MFA | — |
+| Auth | `python-jose` JWT (HS256) + `pyotp` TOTP MFA | — |
+| Data-ops console | Server-rendered Jinja2 at `/admin` | — |
 | Search (later) | OpenSearch | 2.x |
 | Messaging | WhatsApp Business Cloud API (direct) + Amazon SES | — |
 | Hosting | AWS ap-south-1: ECS Fargate, RDS, ElastiCache, S3, CloudFront | — |
@@ -49,22 +50,49 @@
 | **Snowflake / BigQuery** | Analytical warehouses, not OLTP. Your CRM needs sub-200ms single-record reads. Add one *later* if you sell analytics products on top; the CRM is not it. |
 | **Airtable / Google Sheets** | Row limits, no referential integrity, no consent enforcement, no audit trail. Fine for a 500-row pilot, catastrophic at 500,000. |
 
-## 3. Backend: Django + DRF — and why not the alternatives
+## 3. Backend: FastAPI — and why not the alternatives
 
-**Why Django:**
+> **Revised.** This document originally specified Django + DRF, and the system
+> was built on it through Phase 0 and the first Phase 1 sprints. It is now
+> FastAPI + SQLAlchemy 2 (async) + Pydantic v2, and Django is retired. The
+> original argument and what actually happened to it are both kept below,
+> because the reasoning was sound and knowing *which* premise failed is what
+> makes the next such decision better.
 
-- **Django Admin is a working data-ops console on day one.** For a system whose core activity is curating messy master data, this is worth roughly three months of frontend work. Your analysts get bulk edit, filtering, inline related objects and CSV export before you write a single React page.
-- **Migrations are trustworthy.** You will change this schema forty times in year one.
-- **Auth, permissions, RBAC, sessions, CSRF, password hashing, throttling** — solved, audited, and not your problem.
-- **Python** matches Theta Analytics' data-science stack. Your ingestion pipelines, dedupe models and satellite-data integrations all live in the same language as your API.
-- **DRF + drf-spectacular** produces a typed OpenAPI schema, from which you generate the TypeScript client automatically.
+**The original case for Django, and how each part resolved:**
+
+| Original claim | What happened |
+|---|---|
+| Django Admin is a working data-ops console on day one, worth ~3 months of frontend work | **True, and it was the right call for Phase 0.** It was replaced by `/admin` — server-rendered over the same domain layer, read-heavy and write-narrow. Critically it *cannot* issue an invoice, cancel one or record a payment, and a test reads the source to prove those paths do not exist. Django Admin's generic CRUD could not make that promise, and on a system with financial records that promise turned out to matter more than the free screens. |
+| Migrations are trustworthy; you will change this schema forty times in year one | **The premise was wrong, not the claim.** The business schema is owned by `sql/schema.sql` and always was — the partitioning, generated columns and triggers *are* the compliance controls and no ORM can express them. Django's migrations only ever managed Django's own auth and session tables. The forty schema changes were forty reviewed SQL files either way. |
+| Auth, permissions, RBAC, sessions, CSRF, password hashing, throttling — solved and not your problem | **Half true.** Password hashing was genuinely free, and its format is inherited verbatim (`api/security.py`) because the existing hashes are in it. The rest was three libraries — simplejwt, django-otp, axes — configured into a shape none of them defaulted to, because MFA-mandatory-by-role is not a thing any of them ship. That is now ~200 lines of `python-jose` + `pyotp` that does exactly the documented rule. |
+| Python matches Theta's data-science stack | **Still true, and unaffected.** Collectors, dedupe and the Phase 5 satellite cross-check are in the same language as the API. This was never an argument for Django specifically. |
+| DRF + drf-spectacular produces a typed OpenAPI schema | **Superseded.** drf-spectacular *describes* views it inspects, and a description can drift from what the view serves. Pydantic v2 models are the validation and the schema — one definition, no inspection step. |
+
+**What FastAPI added that was worth the port:**
+
+- **Async against `asyncpg`.** The import, export and PDF paths hold a request
+  open for seconds. Under Django these each occupied a worker.
+- **One schema definition.** The request model, the response model and the
+  OpenAPI contract the frontend generates from are the same object.
+- **A smaller trust surface for the AI features.** The copilot's action
+  vocabulary, the patch allow-list and the confirmation hash are ordinary
+  Pydantic types, and the tests assert properties of those types rather than
+  properties of a model's behaviour.
+
+**What it cost:** roughly 6–8 weeks — which is what the row below predicted
+when FastAPI was the rejected alternative. The estimate was accurate. Four
+bugs shipped that the whole suite passed and a browser caught (a trailing
+slash 307 that stripped `Authorization`, three templates still holding Django
+syntax, a preview endpoint stricter than the form calling it, and an absent
+optional package silently changing an extraction path). See `api/README.md`.
 
 **Rejected alternatives:**
 
 | Option | Why not |
 |---|---|
-| **FastAPI** | Faster and lovely to write, but you rebuild admin, auth, permissions and migrations yourself. Choose it for a pure API microservice, not for a CRM. *If your team strongly prefers it:* FastAPI + SQLModel + Alembic is a legitimate second choice — budget 6–8 extra weeks for the admin layer. |
-| **Node/NestJS** | Perfectly capable. But it splits your language from your data pipelines, and Prisma's migration story is weaker than Django's for a schema this shaped (partitioned tables, generated columns, triggers). |
+| **Django + DRF** | Chosen originally, for Admin and migrations; see the table above for how both resolved. It remains the right default for a CRM whose admin screens *are* the product and whose schema an ORM can express — this one is neither. |
+| **Node/NestJS** | Perfectly capable. But it splits the language from the data pipelines, and Prisma's migration story is weaker for a schema this shaped (partitioned tables, generated columns, triggers). |
 | **Laravel** | Strong admin ecosystem, but the Python data-tooling gap is the dealbreaker given Theta's existing work. |
 | **Odoo / SuiteCRM / EspoCRM** | You *could* customise one. You would spend as long fighting its opinionated Company→Contact→Deal model as building the right model yourself, and the farmer/FPO/mill graph does not fit it. Reconsider only if your team is under two engineers. |
 
@@ -116,7 +144,7 @@ Effective 1 July 2026, Meta's India per-message rates are approximately **₹0.8
 
 ```
 Route53 → CloudFront → ALB → ECS Fargate
-                              ├── api        (Django + Gunicorn, 2–8 tasks, autoscale on CPU + queue depth)
+                              ├── api        (FastAPI + Uvicorn workers, 2–8 tasks, autoscale on CPU + queue depth)
                               ├── worker     (Celery: imports, sends, exports — 2–6 tasks)
                               ├── collector  (Celery: scheduled public-registry collectors — 1–2 tasks)
                               └── beat       (Celery Beat scheduler — exactly 1 task)
@@ -130,7 +158,8 @@ Route53 → CloudFront → ALB → ECS Fargate
 
 **Why ECS Fargate over EKS:** Kubernetes is a full-time job. Fargate gives you containers, autoscaling and rolling deploys without a control plane to operate. At this scale it is strictly the right trade. Revisit at ~30 services.
 
-**Why not serverless (Lambda) for the API:** cold starts on a Django app are painful, connection pooling to RDS becomes an RDS Proxy problem, and long-running imports don't fit the execution model. Lambda is right for webhook receivers if you want to isolate them; keep the main API on containers.
+**Why not serverless (Lambda) for the API:** cold starts are still real on a
+full app image, connection pooling to RDS becomes an RDS Proxy problem, and long-running imports don't fit the execution model. Lambda is right for webhook receivers if you want to isolate them; keep the main API on containers.
 
 **Environments:** `dev` (local Docker Compose), `staging` (single-AZ, scaled-down, 🔴 **synthetic or anonymised data only — never a production PII copy**), `production`.
 
@@ -146,24 +175,34 @@ Do not start with OpenSearch. It is a second datastore to keep in sync, and sync
 
 ```
 agri-crm/
-├── backend/
-│   ├── config/              # settings (base/dev/staging/prod), urls, celery, wsgi
-│   ├── apps/
-│   │   ├── accounts/        # users, roles, territories, MFA
-│   │   ├── geography/       # ref.* — states, districts, blocks, villages, LGD sync
-│   │   ├── organisations/   # organisation + type profiles, people, roles, contact points
-│   │   ├── farmers/         # farmer, land, crops, livestock, org links
-│   │   ├── dataquality/     # sources, provenance, scoring, dedupe, imports, merges
-│   │   ├── communications/  # consent, templates, campaigns, whatsapp, email, webhooks
-│   │   ├── projects/        # project registry
-│   │   ├── pipeline/        # leads, opportunities, stage history
-│   │   ├── fieldops/        # agents, territories, visits, targets, mobile sync
-│   │   ├── activities/      # activity feed, tasks, notifications
-│   │   ├── reporting/       # dashboards, saved views, exports
-│   │   └── auditing/        # change log, access log, DSR handling
+├── api/                     # THE SERVICE — FastAPI + SQLAlchemy 2 + Pydantic v2
+│   ├── main.py              # app, middleware, CORS, startup checks
+│   ├── config.py            # pydantic-settings, read from the repo-root .env
+│   ├── db.py                # async engine + session. Never create_all().
+│   ├── security.py          # JWT (HS256) + TOTP + PBKDF2 password verify
+│   ├── deps.py              # FastAPI dependencies: current user, role gates
+│   ├── routers/             # one module per bounded context — the HTTP surface
+│   │   ├── auth.py          # login, refresh, MFA enrol/verify
+│   │   ├── geography.py     # ref.* — states, districts, blocks, villages
+│   │   ├── organisations.py # organisation + type profiles
+│   │   ├── people.py        # core.person, roles, contact points
+│   │   ├── farmers.py       # farmer, land, crops, org links
+│   │   ├── billing*.py      # draft, write, render, extract, entities
+│   │   ├── copilot.py       # the invoice copilot's proposal endpoints
+│   │   ├── deliveries.py    # outbox, previews, dispatch
+│   │   ├── receivables.py   # ageing, reminders, reconciliation
+│   │   ├── dataquality.py   # sources, provenance, contradictions
+│   │   └── compliance.py    # exports, DSR handling
+│   ├── models/              # SQLAlchemy models MAPPING sql/schema.sql
+│   ├── schemas/             # Pydantic request/response contracts
+│   ├── domain/              # compliance logic with no HTTP of its own:
+│   │                        #   pii, scoping, redaction, checks, delivery,
+│   │                        #   payments, proposals, exports, evaluation
+│   ├── providers/           # external services; every one has a deterministic fake
+│   ├── admin/               # the server-rendered data-operations console
 │   ├── collectors/          # one module per approved dq.source
-│   ├── tests/
-│   └── manage.py
+│   ├── templates/           # Jinja2 — invoices, console, emails
+│   └── tests/
 ├── frontend/
 │   ├── src/{api,components,features,hooks,lib,pages,types}/
 │   └── vite.config.ts
@@ -172,11 +211,15 @@ agri-crm/
 ├── infra/
 │   ├── terraform/{modules,envs/{staging,production}}/
 │   └── docker/
-├── docs/                    # ← these documents
+├── agri-crm-docs/           # ← these documents, and sql/
 └── .github/workflows/
 ```
 
-**One Django app per bounded context.** Resist the urge to create `apps/core` — it becomes a dumping ground and every app ends up importing it circularly.
+**One router per bounded context**, with its models in `api/models/` and its
+schemas in `api/schemas/`. Resist the urge to create a `common` or `utils`
+module — it becomes a dumping ground and everything imports it circularly.
+Shared compliance logic goes in `api/domain/`, which is named for what it
+holds and is allowed to have no router at all.
 
 ## 10. Engineering standards
 
@@ -184,13 +227,13 @@ agri-crm/
 |---|---|
 | Python lint/format | `ruff` (lint + format), `mypy --strict` on new modules |
 | TS lint/format | `eslint` + `prettier`, `tsc --noEmit` in CI |
-| Tests | `pytest` + `pytest-django`, `factory_boy` for fixtures; **≥80% coverage on `apps/communications` and `apps/dataquality`** (the two places a bug becomes a legal problem) |
+| Tests | `pytest` + `pytest-asyncio` + `httpx.AsyncClient` against a real Postgres holding the real DDL; **≥80% coverage on `api/collectors` and the consent/PII paths in `api/domain`** (the two places a bug becomes a legal problem) |
 | Schema tests | `sql/smoke_test.sql` runs in CI on every migration |
-| API contract | drf-spectacular generates OpenAPI; TS client generated from it; contract drift fails the build |
-| Migrations | reviewed like code; `--check` in CI catches missing migrations |
+| API contract | FastAPI emits OpenAPI 3.1 from the Pydantic models; `openapi.yaml` is committed; TS client generated from it; contract drift fails the build |
+| Schema changes | reviewed SQL, applied by `make db-migrate`. No migration generator: a schema change is something a person wrote and someone else read. |
 | Secrets | AWS Secrets Manager only. `gitleaks` in pre-commit. |
 | Branching | trunk-based, short-lived branches, PR + 1 review |
-| Deploys | GitHub Actions → ECR → ECS rolling; migrations run as a one-off task before the new revision goes live |
+| Deploys | GitHub Actions → ECR → ECS rolling; schema additions run as a separately approved one-off task before the new revision goes live, never in the web start command |
 | Observability | Sentry (errors), CloudWatch (logs/metrics), Grafana (dashboards). Structured JSON logs with a `request_id` correlating API → Celery → provider webhook. |
 
 ## 11. The build-vs-buy call, stated plainly
@@ -201,4 +244,19 @@ Building this custom costs roughly 9–12 months of one to three engineers. Conf
 
 **Buy and configure if:** you need something running in eight weeks and the CRM is purely internal sales hygiene, with the data asset built separately.
 
-**The hybrid worth considering:** use Django Admin as your entire v1 UI. It is genuinely usable for internal data-ops staff. Ship the schema, the ingestion pipelines and the admin in 10 weeks, prove the data model against real work, and build the polished React UI in phase 2 once you know which screens people actually use. This is the fastest route to a system that is *correct*, and correctness is the thing that is expensive to retrofit.
+**The hybrid worth considering — and what it actually looked like:** ship a
+server-rendered admin console as the entire v1 UI. It is genuinely usable for
+internal data-ops staff. Ship the schema, the ingestion pipelines and the
+admin first, prove the data model against real work, then build the polished
+React UI once you know which screens people actually use. This is the fastest
+route to a system that is *correct*, and correctness is the thing that is
+expensive to retrofit.
+
+That is what happened, with one amendment worth recording: the console was
+Django Admin for Phase 0 and is now a purpose-built one at `/admin`. The
+generic version got the project moving months earlier and was the right
+starting point. It stopped being the right answer at the point the system held
+financial records, because a console that *can* do anything the ORM can do is
+a console you cannot make promises about — and "it cannot issue an invoice,
+and here is the test that proves there is no code path" is a promise worth
+more than free screens.

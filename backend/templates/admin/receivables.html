@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+{% block title %}Receivables{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Receivables</h1>
+  <span class="sub">as at {{ summary.as_of }}</span>
+</header>
+<p class="lede">
+  Outstanding is derived from payment rows, never stored — a stored balance and
+  a payment ledger disagree the first time somebody backdates a receipt, and
+  the one people trust is the wrong one.
+</p>
+
+<div class="grid">
+  {% for b in summary.buckets %}
+  <div class="stat {{ 'flag' if b.bucket == '90_plus' and b.count }}">
+    <div class="n">{{ b.display }}</div>
+    <div class="k">{{ b.label }} · {{ b.count }} invoice{{ '' if b.count == 1 else 's' }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if summary.assumed_due_dates %}
+<div class="notice warn">
+  <strong>{{ summary.assumed_due_dates }}</strong> invoice{{ '' if summary.assumed_due_dates == 1 else 's' }}
+  had no due date and {{ 'was' if summary.assumed_due_dates == 1 else 'were' }} aged from 30 days
+  after the invoice date. A report that silently invents a due date looks
+  authoritative and is partly fiction — these rows are marked below.
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>By customer</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Customer</th><th class="num">Invoices</th><th class="num">Outstanding</th>
+      <th class="num">Oldest</th><th>Contactable</th></tr></thead>
+    <tbody>
+      {% for b in by_buyer %}
+      <tr>
+        <td>
+          {% if b.organisation_id %}
+            <a href="/admin/organisations/{{ b.organisation_id }}">{{ b.buyer_name }}</a>
+          {% else %}{{ b.buyer_name }}{% endif %}
+        </td>
+        <td class="num">{{ b.invoice_count }}</td>
+        <td class="num">{{ b.display.total_outstanding }}</td>
+        <td class="num">{{ b.oldest_days_overdue }} d</td>
+        <td>
+          {% if b.billing_opt_out %}{{ chip('opted out', 'bad') }}
+          {% elif b.billing_email %}{{ chip('email on file', 'ok') }}
+          {% else %}{{ chip('no contact', 'warn') }}{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">Nothing outstanding.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>Who to chase first</h2>
+  <div class="body">
+    <p class="muted" style="margin-top:0">
+      🔴 Advisory and deterministic: days overdue, amount outstanding, promised
+      payments and reminders already sent. No model produced it, it uses no
+      personal characteristics, and it denies nobody service. Hover a score to
+      see the arithmetic.
+    </p>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Invoice</th><th>Customer</th><th class="num">Overdue</th>
+      <th class="num">Outstanding</th><th>Bucket</th><th class="num">Priority</th>
+      <th>Because</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      {% set p = priorities.get(row.invoice_id) %}
+      <tr>
+        <td class="nowrap">
+          <a href="/admin/invoices/{{ row.invoice_id }}">{{ row.invoice_no or '— draft —' }}</a>
+        </td>
+        <td>{{ row.buyer_name | truncate_text(28) }}</td>
+        <td class="num">
+          {{ row.days_overdue }} d
+          {% if row.due_date_assumed %}<div class="muted">assumed</div>{% endif %}
+        </td>
+        <td class="num">{{ row.amount_outstanding | inr }}</td>
+        <td>{{ chip(row.bucket_label, 'bad' if row.bucket == '90_plus' else ('warn' if row.days_overdue > 0 else 'ok')) }}</td>
+        <td class="num">
+          {% if p %}{{ chip(p.score | string, 'bad' if p.band == 'high' else ('warn' if p.band == 'medium' else 'mute')) }}{% endif %}
+        </td>
+        <td class="muted">
+          {% if p %}
+            {% for f in p.factors %}
+              <div>{{ f.explanation }}</div>
+            {% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">Nothing outstanding.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% endblock %}

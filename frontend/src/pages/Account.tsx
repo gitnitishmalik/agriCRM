@@ -9,7 +9,8 @@
  */
 
 import { useMe } from '../api/auth'
-import { PageHeader, roleLabel } from '../layout/AppShell'
+import { PageHeader } from '../layout/AppShell'
+import { roleLabel } from '../lib/roles'
 import { MaskedValue } from '../components/MaskedValue'
 
 export function AccountPage() {
@@ -92,19 +93,18 @@ export function AccountPage() {
 
         <section className="card p-5 sm:col-span-2">
           <h2 className="label">Permissions</h2>
-          {me.permissions.length > 0 ? (
-            <ul className="mt-3 space-y-1">
-              {me.permissions.map((permission) => (
-                <li key={permission} className="font-mono text-sm text-ink-2">
-                  {permission}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-base text-ink-2">
-              No individual permissions granted. Your access comes from your role.
-            </p>
-          )}
+          {/*
+            🔴 There is no per-user permission list, and this section must not
+            imply there is one. Every capability in this system is derived from
+            the role — `contact.view_full` is `{data_ops, compliance, admin}` in
+            `domain/pii.py`, and the import and billing overrides are the same
+            shape. An earlier version read `me.permissions`, which `/auth/me/`
+            has never returned: the field was `undefined`, `.length` threw, and
+            this whole page rendered blank for every user.
+          */}
+          <p className="mt-2 text-base text-ink-2">
+            No individual permissions granted. Your access comes from your role.
+          </p>
           <p className="mt-3 border-t border-line pt-3 text-sm text-ink-3">
             <code className="font-mono">contact.view_full</code> and{' '}
             <code className="font-mono">import.commit</code> are reviewed every quarter.

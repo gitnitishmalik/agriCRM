@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+{% block title %}Field provenance{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Field provenance</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} values</span>
+</header>
+<p class="lede">
+  The rawest view of the collected data there is: one row per field per entity,
+  exactly as the collector wrote it. It answers “what did that run actually put
+  in the database” without trusting a summary — which is the question you have
+  when a parser change is suspected.
+</p>
+
+<div class="card">
+  <div class="body">
+    <form class="filters" method="get">
+      <div class="field">
+        <label for="source">Source</label>
+        <select id="source" name="source">
+          <option value="">Any source</option>
+          {% for s in sources %}
+          <option value="{{ s.code }}" {{ 'selected' if filters.source == s.code }}>{{ s.code }} — {{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="field">Field</label>
+        <select id="field" name="field">
+          <option value="">Any field</option>
+          {% for f in field_names %}
+          <option value="{{ f }}" {{ 'selected' if filters.field == f }}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="current_only">Show</label>
+        <select id="current_only" name="current_only">
+          <option value="true" {{ 'selected' if filters.current_only }}>Current values only</option>
+          <option value="false" {{ 'selected' if not filters.current_only }}>Including superseded</option>
+        </select>
+      </div>
+      <div class="field"><button type="submit">Filter</button></div>
+      <div class="field"><a class="btn ghost" href="/admin/provenance/">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead>
+      <tr>
+        <th>Entity</th><th>Field</th><th>Value</th><th>Source</th>
+        <th class="num">Confidence</th><th>Collected</th><th>Reference</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in page.items %}
+      <tr>
+        <td>
+          {% if row.entity_type == 'organisation' %}
+            <a href="/admin/organisations/{{ row.entity_id }}">
+              {{ names.get(row.entity_id, '(unknown)') | truncate_text(38) }}</a>
+          {% else %}
+            <span class="muted">{{ row.entity_type }}</span>
+          {% endif %}
+        </td>
+        <td class="nowrap"><code>{{ row.field_name }}</code></td>
+        <td>{{ row.value_text | truncate_text(52) }}</td>
+        <td>
+          {% if row.source %}
+            <span class="chip {{ 'ok' if row.source.is_approved else 'bad' }}">{{ row.source.code }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">{{ confidence_chip(row.confidence) }}</td>
+        <td class="muted nowrap">{{ row.collected_at | ago }}</td>
+        <td class="muted">
+          {% if row.source_reference %}
+            <a href="{{ row.source_reference }}" target="_blank" rel="noopener noreferrer">
+              {{ row.source_reference | truncate_text(34) }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ chip('current', 'ok') if row.is_current else chip('superseded', 'mute') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">
+        No provenance rows match. If a collector has run, its writes may all
+        have become contradictions rather than values.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>
+    {% endif %}
+    {% if page.has_next %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

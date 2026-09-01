@@ -133,6 +133,29 @@ CREATE TYPE crm.activity_type AS ENUM (
   'proposal_shared','note','task','document_shared','system_event'
 );
 
+-- Billing. See INVOICE.md.
+--
+-- 'discarded' is for a draft that never became a document; 'cancelled' is for
+-- one that did. The two are not interchangeable: a cancelled invoice keeps its
+-- number forever, a discarded draft never had one.
+CREATE TYPE crm.invoice_status AS ENUM (
+  'draft','issued','on_hold','part_paid','paid','cancelled','discarded'
+);
+
+-- How the invoice treats tax. Captured per invoice and never inferred: the
+-- historical data shows Syngenta billed with IGST while mill invoices show
+-- zero against a non-zero total, and INVOICE.md §5.4 is waiting on the CA to
+-- say which of those is grant disbursement rather than taxable supply.
+CREATE TYPE crm.tax_treatment AS ENUM (
+  'igst','cgst_sgst','zero_rated','exempt','grant'
+);
+
+-- Units a line may be billed in. Area units all carry a hectare conversion;
+-- 🔴 hectares is the analysable column, the rest are input conveniences.
+CREATE TYPE crm.billing_unit AS ENUM (
+  'acre','sq_km','hectare','each','lump_sum','day','hour'
+);
+
 -- ---------------------------------------------------------------------
 -- 2. Reference / geography  (LGD-aligned)
 -- ---------------------------------------------------------------------
@@ -422,10 +445,17 @@ CREATE TABLE core.person (
   first_name          text NOT NULL,
   middle_name         text,
   last_name           text,
+  -- 🔴 Whitespace is collapsed, not just trimmed. btrim alone leaves
+  -- 'Sunita  Devi' whenever middle_name is null, which is most rows — and
+  -- that string is what idx_person_name_trgm indexes and what every name
+  -- search compares against. A double space inside the search key is exactly
+  -- the class of defect Doc 07 warns about for Indian name matching.
   full_name           text GENERATED ALWAYS AS (
-                        btrim(coalesce(first_name,'') || ' ' ||
-                              coalesce(middle_name,'') || ' ' ||
-                              coalesce(last_name,''))
+                        btrim(regexp_replace(
+                          coalesce(first_name,'') || ' ' ||
+                          coalesce(middle_name,'') || ' ' ||
+                          coalesce(last_name,''),
+                          '\s+', ' ', 'g'))
                       ) STORED,
   name_local          text,
   father_or_spouse    text,                     -- essential disambiguator
@@ -1090,6 +1120,267 @@ CREATE TABLE crm.task (
 CREATE INDEX idx_task_assignee ON crm.task(assigned_to, status, due_at);
 
 -- ---------------------------------------------------------------------
+-- 9b. Billing   (INVOICE.md)
+--
+-- The register and the document, not the ledger. This schema records what was
+-- billed, to whom, for which project, and whether it was paid. It does not
+-- file a return, compute TDS or hold a trial balance — those stay in Tally.
+-- ---------------------------------------------------------------------
+
+-- Who is issuing. Two rows today: TFD and TEPL.
+--
+-- 🔴 Versioned, not mutable. TEPL's bank moved from Axis to ICICI during
+-- FY2026-27, so a 2025 invoice re-rendered today must print the Axis block it
+-- was issued with. Closing a row and opening a new one is the only correct way
+-- to change an address, a bank or a signatory.
+CREATE TABLE crm.billing_entity (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code              text NOT NULL,              -- TFD, TEPL
+  legal_name        text NOT NULL,
+  address_lines     text[] NOT NULL DEFAULT '{}',
+  state_id          smallint REFERENCES ref.state(id),
+  state_code        char(2) NOT NULL,           -- GST state code, '07' for Delhi
+  gstin             text,
+  pan               text,
+  contact_name      text,
+  contact_phone     text,
+  contact_email     text,
+
+  bank_name         text,
+  bank_account_no   text,
+  bank_ifsc         text,
+  bank_branch       text,
+  bank_address      text,
+
+  signatory_name    text,
+  signatory_title   text,
+  declaration       text,
+  jurisdiction_note text,
+
+  template_code     text NOT NULL DEFAULT 'T2', -- T1 / T2 / T3, see INVOICE.md §2.4
+  logo_storage_key  text,
+
+  valid_from        date NOT NULL,
+  valid_to          date,                       -- NULL = current
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  CHECK (valid_to IS NULL OR valid_to >= valid_from)
+);
+-- One current row per code. A closed row may overlap nothing, which the
+-- exclusion constraint below enforces properly.
+CREATE UNIQUE INDEX idx_billing_entity_current
+  ON crm.billing_entity(code) WHERE valid_to IS NULL;
+ALTER TABLE crm.billing_entity ADD CONSTRAINT billing_entity_no_overlap
+  EXCLUDE USING gist (
+    code WITH =,
+    daterange(valid_from, COALESCE(valid_to, 'infinity'::date), '[]') WITH &&
+  );
+
+-- Number allocation. 🔴 Gapless and single-use: cancelling an invoice keeps
+-- its number and the series moves on. The FY26 data reissued TEPL/2026-27/03
+-- and /04 after cancelling them, which is what this table exists to prevent.
+CREATE TABLE crm.invoice_number_series (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  entity_code       text NOT NULL,              -- TFD / TEPL, not the entity id: the
+                                                -- series outlives any one entity version
+  financial_year    text NOT NULL,              -- '2026-27'
+  stream            text NOT NULL DEFAULT '',   -- 'M' for Mizoram, '' for the main run
+  pattern           text NOT NULL DEFAULT '{entity}/{fy}/{stream}{n}',
+  next_number       integer NOT NULL DEFAULT 1 CHECK (next_number >= 1),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (entity_code, financial_year, stream)
+);
+
+CREATE TABLE crm.invoice (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- NULL while draft. Assigned once, at issue, and never reassigned.
+  invoice_no          text,
+  financial_year      text,
+  stream              text NOT NULL DEFAULT '',
+
+  billing_entity_id   uuid NOT NULL REFERENCES crm.billing_entity(id),
+  entity_code         text NOT NULL,
+
+  -- The join that makes this a CRM feature rather than a billing app.
+  organisation_id     uuid REFERENCES core.organisation(id) ON DELETE RESTRICT,
+  project_id          uuid REFERENCES crm.project(id) ON DELETE SET NULL,
+
+  invoice_date        date NOT NULL,
+  due_date            date,
+
+  -- 🔴 Snapshotted at issue. A customer who later moves office must not
+  -- silently rewrite a document their accounts team already holds.
+  buyer_name          text NOT NULL,
+  buyer_address       text,
+  buyer_gstin         text,
+  buyer_pan           text,
+  buyer_state_code    char(2),
+  buyer_is_govt_uin   boolean NOT NULL DEFAULT false,
+
+  -- Ship-to, printed only by template T3.
+  consignee_name      text,
+  consignee_address   text,
+  consignee_gstin     text,
+
+  buyer_order_no      text,                     -- Syngenta PO, e.g. 1100644669
+  buyer_order_date    date,
+  work_order_ref      text,                     -- Mizoram
+  letter_ref          text,
+  delivery_note       text,
+  payment_terms       text,
+  destination         text,
+  data_link_url       text,                     -- deliverable handover
+
+  place_of_supply_state_code char(2),
+  tax_treatment       crm.tax_treatment NOT NULL DEFAULT 'igst',
+  tax_rate_pct        numeric(5,2) NOT NULL DEFAULT 18.00,
+
+  -- Totals are written by trigger from the lines. Storing them keeps the
+  -- register listable without a join to a sum, and the trigger keeps them
+  -- honest.
+  taxable_value       numeric(14,2) NOT NULL DEFAULT 0,
+  tax_amount          numeric(14,2) NOT NULL DEFAULT 0,
+  total_value         numeric(14,2) NOT NULL DEFAULT 0,
+  amount_in_words     text,
+
+  status              crm.invoice_status NOT NULL DEFAULT 'draft',
+  issued_at           timestamptz,
+  cancelled_at        timestamptz,
+  cancellation_reason text,
+  held_at             timestamptz,
+  hold_reason         text,
+
+  -- The rendered document. sha256 is what lets you prove the PDF you hold is
+  -- the PDF you sent.
+  pdf_storage_key     text,
+  pdf_sha256          bytea,
+  pdf_generated_at    timestamptz,
+  template_code       text NOT NULL DEFAULT 'T2',
+
+  -- Where this record came from. A historical import is locked: regenerating
+  -- it must reproduce the original document, not re-render it in a template
+  -- that has since changed.
+  source_id           integer REFERENCES dq.source(id),
+  is_historical       boolean NOT NULL DEFAULT false,
+  extraction_id       uuid,                     -- crm.invoice_extraction
+
+  notes               text,
+  extra               jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_deleted          boolean NOT NULL DEFAULT false,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  created_by          uuid,
+  updated_by          uuid,
+
+  -- A document exists or it does not. These four move together.
+  CHECK (status = 'draft' OR status = 'discarded' OR invoice_no IS NOT NULL),
+  CHECK (status <> 'cancelled' OR cancellation_reason IS NOT NULL),
+  CHECK (status <> 'on_hold'  OR hold_reason IS NOT NULL),
+  CHECK (due_date IS NULL OR due_date >= invoice_date)
+);
+
+-- 🔴 The constraint that makes D3 impossible. Partial, because drafts have no
+-- number and many of them may sit at NULL at once.
+CREATE UNIQUE INDEX idx_invoice_no_unique
+  ON crm.invoice(entity_code, invoice_no) WHERE invoice_no IS NOT NULL;
+CREATE INDEX idx_invoice_org    ON crm.invoice(organisation_id) WHERE NOT is_deleted;
+CREATE INDEX idx_invoice_status ON crm.invoice(status, invoice_date DESC) WHERE NOT is_deleted;
+CREATE INDEX idx_invoice_fy     ON crm.invoice(entity_code, financial_year) WHERE NOT is_deleted;
+CREATE INDEX idx_invoice_project ON crm.invoice(project_id) WHERE project_id IS NOT NULL;
+
+CREATE TABLE crm.invoice_line (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id          uuid NOT NULL REFERENCES crm.invoice(id) ON DELETE CASCADE,
+  line_no             smallint NOT NULL,
+  description         text NOT NULL,
+  hsn_sac             text,
+
+  quantity            numeric(14,4) NOT NULL,
+  unit                crm.billing_unit NOT NULL,
+
+  -- 🔴 CLAUDE.md: all area in hectares. Acres and square kilometres are input
+  -- conveniences converted at the edge, and this column is the conversion —
+  -- generated, so it cannot drift from the quantity it derives from.
+  --   1 acre  = 0.40468564224 ha exactly
+  --   1 sq km = 100 ha exactly
+  quantity_ha         numeric(14,4) GENERATED ALWAYS AS (
+                        CASE unit
+                          WHEN 'acre'    THEN quantity * 0.40468564224
+                          WHEN 'sq_km'   THEN quantity * 100
+                          WHEN 'hectare' THEN quantity
+                          ELSE NULL
+                        END
+                      ) STORED,
+
+  rate                numeric(14,4) NOT NULL,
+  -- The Mizoram survey work is quoted at a rate that already contains GST,
+  -- while spraying is quoted ex-tax. Without this flag the register overstates
+  -- revenue on every survey invoice.
+  rate_is_tax_inclusive boolean NOT NULL DEFAULT false,
+  tax_rate_pct        numeric(5,2) NOT NULL DEFAULT 18.00,
+
+  line_taxable_value  numeric(14,2) NOT NULL,
+  line_tax_amount     numeric(14,2) NOT NULL DEFAULT 0,
+  line_total          numeric(14,2) NOT NULL,
+
+  district_id         integer REFERENCES ref.district(id),
+  state_id            smallint REFERENCES ref.state(id),
+  location_note       text,                     -- 'Keifang, Saitual'
+
+  UNIQUE (invoice_id, line_no),
+  CHECK (quantity > 0),
+  CHECK (rate >= 0)
+);
+CREATE INDEX idx_invline_invoice  ON crm.invoice_line(invoice_id, line_no);
+CREATE INDEX idx_invline_district ON crm.invoice_line(district_id) WHERE district_id IS NOT NULL;
+CREATE INDEX idx_invline_hsn      ON crm.invoice_line(hsn_sac);
+
+CREATE TABLE crm.invoice_payment (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id        uuid NOT NULL REFERENCES crm.invoice(id) ON DELETE CASCADE,
+  received_on       date NOT NULL,
+  amount            numeric(14,2) NOT NULL CHECK (amount > 0),
+  mode              text,                       -- rtgs / neft / cheque / upi
+  reference         text,
+  note              text,
+  recorded_by       uuid,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_invpay_invoice ON crm.invoice_payment(invoice_id, received_on);
+
+-- What the extraction agent read off an uploaded document, kept beside what a
+-- human then accepted. Provenance for a machine-filled form: if the model
+-- misreads a rate, the evidence of what it read is still here afterwards.
+CREATE TABLE crm.invoice_extraction (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id        uuid REFERENCES crm.invoice(id) ON DELETE SET NULL,
+  file_name         text NOT NULL,
+  storage_key       text,
+  mime_type         text,
+  size_bytes        bigint,
+  sha256            bytea,
+
+  model             text,                       -- claude-opus-5
+  status            text NOT NULL DEFAULT 'pending', -- pending/succeeded/failed
+  error             text,
+  raw_response      jsonb,                      -- exactly what came back
+  extracted         jsonb NOT NULL DEFAULT '{}'::jsonb,
+  field_confidence  jsonb NOT NULL DEFAULT '{}'::jsonb,
+  warnings          text[] NOT NULL DEFAULT '{}',
+
+  -- Set when a human accepts the draft, so "what the model said" and "what was
+  -- billed" can always be compared.
+  accepted_at       timestamptz,
+  accepted_by       uuid,
+
+  duration_ms       integer,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  created_by        uuid
+);
+CREATE INDEX idx_invextract_invoice ON crm.invoice_extraction(invoice_id);
+CREATE INDEX idx_invextract_status  ON crm.invoice_extraction(status, created_at DESC);
+
+-- ---------------------------------------------------------------------
 -- 10. Documents
 -- ---------------------------------------------------------------------
 CREATE TABLE core.document (
@@ -1362,6 +1653,90 @@ END $$;
 
 CREATE TRIGGER trg_opp_stage BEFORE UPDATE ON crm.opportunity
   FOR EACH ROW EXECUTE FUNCTION crm.fn_track_opp_stage();
+
+-- Roll invoice line amounts up to the header.
+--
+-- 🔴 Round per line, then sum. Summing unrounded values and rounding the total
+-- produces a total that disagrees with the printed line table by a rupee, and
+-- a customer's accounts team will reject the document over it.
+CREATE OR REPLACE FUNCTION crm.fn_invoice_rollup() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  target uuid := COALESCE(NEW.invoice_id, OLD.invoice_id);
+BEGIN
+  UPDATE crm.invoice i SET
+    taxable_value = COALESCE(t.taxable, 0),
+    tax_amount    = COALESCE(t.tax, 0),
+    total_value   = COALESCE(t.total, 0),
+    updated_at    = now()
+  FROM (
+    SELECT sum(line_taxable_value) AS taxable,
+           sum(line_tax_amount)    AS tax,
+           sum(line_total)         AS total
+    FROM crm.invoice_line WHERE invoice_id = target
+  ) t
+  WHERE i.id = target;
+  RETURN NULL;
+END $$;
+
+CREATE TRIGGER trg_invline_rollup
+  AFTER INSERT OR UPDATE OR DELETE ON crm.invoice_line
+  FOR EACH ROW EXECUTE FUNCTION crm.fn_invoice_rollup();
+
+-- Move an issued invoice between part_paid and paid as receipts land.
+--
+-- Deliberately does not touch cancelled, on_hold or draft: a payment against a
+-- cancelled invoice is a problem for a human to look at, not something to
+-- resolve by silently marking the document paid.
+CREATE OR REPLACE FUNCTION crm.fn_invoice_payment_status() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  target uuid := COALESCE(NEW.invoice_id, OLD.invoice_id);
+  received numeric(14,2);
+  inv crm.invoice%ROWTYPE;
+BEGIN
+  SELECT * INTO inv FROM crm.invoice WHERE id = target;
+  IF inv.status NOT IN ('issued','part_paid','paid') THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT COALESCE(sum(amount), 0) INTO received
+  FROM crm.invoice_payment WHERE invoice_id = target;
+
+  UPDATE crm.invoice SET
+    status = CASE
+               WHEN received <= 0            THEN 'issued'::crm.invoice_status
+               WHEN received >= total_value  THEN 'paid'::crm.invoice_status
+               ELSE 'part_paid'::crm.invoice_status
+             END,
+    updated_at = now()
+  WHERE id = target;
+  RETURN NULL;
+END $$;
+
+CREATE TRIGGER trg_invpay_status
+  AFTER INSERT OR UPDATE OR DELETE ON crm.invoice_payment
+  FOR EACH ROW EXECUTE FUNCTION crm.fn_invoice_payment_status();
+
+-- 🔴 An issued invoice number is permanent.
+--
+-- This is the whole point of the billing register. The FY26 data cancelled
+-- TEPL/2026-27/03 and then reissued a different document under the same
+-- number; from here that raises instead. Cancelling keeps the number, and the
+-- series has already moved past it.
+CREATE OR REPLACE FUNCTION crm.fn_invoice_no_immutable() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.invoice_no IS NOT NULL AND NEW.invoice_no IS DISTINCT FROM OLD.invoice_no THEN
+    RAISE EXCEPTION
+      'invoice_no % is already allocated and cannot be changed or reused (invoice %)',
+      OLD.invoice_no, OLD.id;
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_invoice_no_immutable BEFORE UPDATE ON crm.invoice
+  FOR EACH ROW EXECUTE FUNCTION crm.fn_invoice_no_immutable();
 
 -- =====================================================================
 --  End of schema

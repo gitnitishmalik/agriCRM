@@ -6,6 +6,7 @@
  * revalidates, caches and invalidates with the same rules as everything else.
  */
 
+import { useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, tokens, type User } from './client'
 
@@ -18,6 +19,21 @@ export interface LoginResponse {
 }
 
 export const meKey = ['auth', 'me'] as const
+
+/**
+ * Whether a session exists, as reactive state.
+ *
+ * The tokens live outside React — an access token in a module variable, a
+ * refresh token in localStorage — so a component cannot see them change.
+ * `useSyncExternalStore` is the supported way to read exactly that kind of
+ * value: React subscribes, and clearing the tokens re-renders every consumer.
+ *
+ * This is what makes sign-out immediate. Before it, `RequireAuth` read the
+ * token during render and nothing told it to look again.
+ */
+export function useSession(): boolean {
+  return useSyncExternalStore(tokens.subscribe, tokens.hasSession, tokens.hasSession)
+}
 
 export function useMe() {
   return useQuery({
@@ -87,6 +103,10 @@ export function useLogout() {
       }
     },
     onSettled: () => {
+      // Order matters. Clearing the tokens notifies `useSession`, which flips
+      // `RequireAuth` to a redirect; clearing the cache then drops the data
+      // that was on screen. Doing it the other way round briefly refetches
+      // `/auth/me/` with a token that is about to be thrown away.
       tokens.clear()
       qc.clear()
     },

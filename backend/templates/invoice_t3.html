@@ -1,0 +1,51 @@
+{% extends "invoice_t2.html" %}
+{# T3 — Theta Enerlytics survey invoice, Mizoram.
+
+   T2 plus the three things the government work needs and the Syngenta work
+   does not: a Consignee (Ship to) block, the Work Order and Letter reference
+   numbers printed rather than left blank, and a deliverable link.
+
+   It extends T2 rather than copying it, so a change to the money columns or
+   the bank block lands on both. The supplier cell has to grow by two rows to
+   stay level with the extra reference fields on the right — that is the whole
+   of the override. #}
+
+{% block doc_title %}Invoice{% endblock %}
+
+{% block supplier_rowspan %}5{% endblock %}
+
+{% block consignee %}
+  <tr>
+    <td colspan="2">
+      <span class="label">Work Order No.</span>
+      <span class="small">{{ invoice.work_order_ref|default("") }}</span>
+    </td>
+    <td colspan="2">
+      <span class="label">Letter Reference No.</span>
+      <span class="small">{{ invoice.letter_ref|default("") }}</span>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2"><span class="label">Dispatch Doc No.</span></td>
+    <td colspan="2"><span class="label">Delivery Note Date</span></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <span class="label">Consignee (Ship to)</span>
+      <span class="party-name">{{ invoice.consignee_name|default(invoice.buyer_name) }}</span>
+      {% if invoice.consignee_address %}
+        <span class="party-line">{{ invoice.consignee_address|linebreaksbr }}</span>
+      {% elif not invoice.consignee_name %}
+        <span class="party-line">{{ invoice.buyer_address|linebreaksbr }}</span>
+      {% endif %}
+      {% with cg=invoice.consignee_gstin|default(invoice.buyer_gstin) %}
+        {% if cg %}<span class="party-line">GSTIN/UIN : {{ cg }}</span>{% endif %}
+      {% endwith %}
+      {% if buyer_state_name %}
+        <span class="party-line">State Name : {{ buyer_state_name }}, Code : {{ invoice.buyer_state_code }}</span>
+      {% endif %}
+    </td>
+    <td colspan="2"><span class="label">Dispatched through</span></td>
+    <td colspan="2"><span class="label">Destination</span>{{ invoice.destination|default("") }}</td>
+  </tr>
+{% endblock %}

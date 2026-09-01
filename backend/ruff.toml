@@ -1,0 +1,56 @@
+# Lint settings for the FastAPI service.
+#
+# Separate from the Django package's config because the two have genuinely
+# different conventions — that one is Django, this one is SQLAlchemy — and a
+# shared config would have to be loose enough for both.
+
+line-length = 100
+target-version = "py313"
+
+[lint]
+# 🔴 DTZ011 forbids `date.today()`, wanting a timezone-aware call. It is right
+# in general and wrong for this domain: an invoice date, a due date and an
+# effective-from date are *calendar* dates in Asia/Kolkata, not instants. The
+# project convention is that timestamps are `timestamptz` stored UTC and dates
+# are dates — and at the boundary of a business day, which date an invoice
+# carries is a question the operator answers by typing it, not one a `tzinfo`
+# argument settles.
+#
+# Only this member is off. DTZ005/DTZ007 and the rest stay on, because they
+# guard actual instants, where the timezone genuinely is a correctness question.
+ignore = ["DTZ011"]
+
+[lint.per-file-ignores]
+# 🔴 RUF012 wants `ClassVar` on every mutable class attribute. SQLAlchemy's
+# `__table_args__` is a dict by documented convention and cannot be annotated
+# that way without confusing the declarative mapper. Silenced for the models
+# only, so the rule keeps working everywhere it is right.
+"models/*.py" = ["RUF012"]
+
+# 🔴 B008 forbids a function call in an argument default. FastAPI *requires*
+# exactly that — `File(...)`, `Form(...)`, `Query(...)` and `Depends(...)` are
+# how the framework is told what a parameter is. The rule is right for ordinary
+# Python and wrong for every route in this package.
+"routers/*.py" = ["B008"]
+"admin/*.py" = ["B008"]
+
+# BLE001 wants a narrow except. Three places catch `Exception` on purpose, and
+# each is a boundary where the breadth is the point:
+#
+#   * `agent.py` reading a PDF's text layer — the fallback is the vision path,
+#     and the ways a hand-scanned PDF can be malformed are not enumerable.
+#   * `domain/delivery.dispatch` — a provider that raises is treated as
+#     transient and retried; letting it escape would fail the whole drain.
+#   * `domain/redaction.RedactingFilter` — a logging filter that raises takes
+#     down the request it was describing.
+"agent.py" = ["BLE001"]
+"domain/delivery.py" = ["BLE001"]
+"domain/redaction.py" = ["BLE001"]
+
+# Tests may reach for whatever reads clearly. A test that has to construct a
+# tz-aware value to say "today" is a test nobody wants to read, and `assert` is
+# the entire point of the file.
+# B008 is here for the same reason it is in `routers/`: `conftest.py` builds
+# a FastAPI dependency override, and `Depends(...)` in a default is how the
+# framework is told what a parameter is.
+"tests/*.py" = ["DTZ005", "DTZ007", "S101", "PLR2004", "B008"]

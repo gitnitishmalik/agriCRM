@@ -1,8 +1,12 @@
 # 🔴 gitleaks is not optional (Doc 12 §6). A secret in git history is a secret
 # that has to be rotated, and the rotation is always discovered late.
 repos:
+  # 🔴 Pinned to the same ruff the project pins (`backend/requirements-dev.txt`)
+  # and CI installs (`ruff==0.16.4` in ci.yml). ruff's formatter output changes
+  # between releases, so a hook on a different version reformats on commit
+  # exactly what `make lint` and CI then reject. Bump all three together.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.16.4
     hooks:
       - id: ruff
         args: [--fix]

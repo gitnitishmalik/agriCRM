@@ -1,0 +1,82 @@
+{% extends "admin/base.html" %}
+{% block title %}Deliveries{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Delivery outbox</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} attempts</span>
+</header>
+<p class="lede">
+  Every attempt to put a document in front of a customer, each naming the PDF
+  hash it carried. A resend after a re-render is a different artifact — “which
+  document did they actually receive” is answerable only because each attempt
+  recorded what it carried rather than pointing at whatever the invoice holds
+  now.
+</p>
+
+<div class="card">
+  <div class="body">
+    <form class="filters" method="get">
+      <div class="field">
+        <label for="delivery_status">Status</label>
+        <select id="delivery_status" name="delivery_status">
+          <option value="">Any status</option>
+          {% for s in ['queued','claimed','sent','delivered','failed','cancelled'] %}
+          <option value="{{ s }}" {{ 'selected' if filters.delivery_status == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><button type="submit">Filter</button></div>
+      <div class="field"><a class="btn ghost" href="/admin/deliveries/">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>Invoice</th><th>Channel</th><th>Recipient</th><th>Status</th>
+      <th class="num">Attempts</th><th>PDF hash</th><th>Confirmed</th>
+      <th>Sent</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for d in page.items %}
+      <tr>
+        <td class="nowrap">
+          <a href="/admin/invoices/{{ d.invoice_id }}">
+            {{ invoice_numbers.get(d.invoice_id) or '— draft —' }}</a>
+        </td>
+        <td>{{ d.channel }}{% if d.reminder_id %} {{ chip('reminder', 'mute') }}{% endif %}</td>
+        <td>{{ d.recipient | mask_email }}</td>
+        <td>{{ status_chip(d.status) }}</td>
+        <td class="num">{{ d.attempts }} / {{ d.max_attempts }}</td>
+        <td><code>{{ d.pdf_sha256.hex()[:14] ~ '…' if d.pdf_sha256 else '—' }}</code></td>
+        <td class="muted nowrap">{{ d.confirmed_at | ago }}</td>
+        <td class="muted nowrap">{{ d.sent_at | when if d.sent_at else '—' }}</td>
+        <td class="muted">{{ d.error_detail | truncate_text(36) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="empty">Nothing has been sent.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>{% endif %}
+    {% if page.has_next %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="body">
+    <p class="muted" style="margin:0">
+      🔴 A transactional outbox, not a queue call. The row is written in the same
+      transaction as the confirmation, so a crash between “the user confirmed”
+      and “the broker accepted” leaves work a worker will pick up rather than a
+      confirmation that silently did nothing. Consent is re-checked at dispatch:
+      a customer who opts out after confirming does not receive the message.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

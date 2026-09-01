@@ -1,0 +1,111 @@
+{% extends "invoice_base.html" %}
+{# T1 — Theta Foundation for Development tax invoice.
+
+   A different document from T2, not a variant of it: no Tally grid, no
+   reference column, a plain header block over a five-column item table with
+   G. Total / IGST / Total stacked underneath. It extends the base for the page
+   box and the money columns only.
+
+   The quantity column is headed "Qty (in Acres)" on every real TFD invoice, so
+   the unit is in the heading rather than in a per-row column. #}
+
+{% block document %}
+<div class="sheet" style="border:0">
+
+  <div class="doc-title" style="font-size:12pt">TAX INVOICE</div>
+
+  <table style="margin-bottom:3mm">
+    <tr>
+      <td style="width:58%; padding-left:0">
+        <span class="party-name" style="font-size:11pt">{{ entity.legal_name }}</span>
+        {% for line in entity.address_lines %}<span class="party-line small">{{ line }}</span>{% endfor %}
+        <div style="margin-top:2mm">
+          {% if entity.gstin %}<span class="party-line small">GSTIN: - {{ entity.gstin }}</span>{% endif %}
+          {% if entity.pan %}<span class="party-line small">PAN No.- {{ entity.pan }}</span>{% endif %}
+          {% if entity.contact_name %}<span class="party-line small">Contact Person. - {{ entity.contact_name }}</span>{% endif %}
+          {% if entity.contact_phone %}<span class="party-line small">Contact No.- {{ entity.contact_phone }}</span>{% endif %}
+        </div>
+      </td>
+      <td class="num" style="padding-right:0">
+        <div><span class="label" style="display:inline">Invoice No.:</span>
+          <span class="bold">{{ invoice.invoice_no|default("—") }}</span></div>
+        <div><span class="label" style="display:inline">Invoice Date:</span>
+          <span class="bold">{{ invoice.invoice_date|date("d F Y") }}</span></div>
+        {% if is_draft %}<div style="margin-top:2mm"><span class="status-stamp">DRAFT</span></div>{% endif %}
+        {% if invoice.status == "cancelled" %}<div style="margin-top:2mm"><span class="status-stamp">CANCELLED</span></div>{% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <div style="margin-bottom:3mm">
+    <div class="bold" style="margin-bottom:1mm">Bill To</div>
+    <span class="party-name">{{ invoice.buyer_name }}</span>
+    {% if invoice.buyer_address %}<span class="party-line small">{{ invoice.buyer_address|linebreaksbr }}</span>{% endif %}
+    {% if invoice.buyer_gstin %}<span class="party-line small">GSTIN: {{ invoice.buyer_gstin }}</span>{% endif %}
+    {% if invoice.buyer_pan %}<span class="party-line small">PAN No: {{ invoice.buyer_pan }}</span>{% endif %}
+    {% if invoice.buyer_order_no %}<span class="party-line small">Purchase Order No: {{ invoice.buyer_order_no }}</span>{% endif %}
+  </div>
+
+  <table class="grid items">
+    <thead>
+      <tr>
+        <th style="width:12mm">S.no.</th>
+        <th>Item &amp; Description</th>
+        <th style="width:20mm">HSN Code</th>
+        <th style="width:26mm">Qty ({{ qty_heading }})</th>
+        <th style="width:22mm">Rate (in INR)</th>
+        <th style="width:30mm">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td class="centre">{{ line.line_no }}.</td>
+        <td>{{ line.description }}{% if line.location_note %}<br><span class="small">{{ line.location_note }}</span>{% endif %}</td>
+        <td class="centre">{{ line.hsn_sac|default("") }}</td>
+        <td class="qty">{{ line.quantity_display }}</td>
+        <td class="num">{{ line.rate_display }}</td>
+        <td class="num">{{ line.taxable_display }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="totals">
+        <td colspan="5" class="num">G. Total</td>
+        <td class="num">{{ taxable_display }}</td>
+      </tr>
+      {% if invoice.tax_amount %}
+      <tr class="totals">
+        <td colspan="5" class="num">{{ tax_label }}</td>
+        <td class="num">{{ tax_display }}</td>
+      </tr>
+      {% endif %}
+      <tr class="totals">
+        <td colspan="4" class="small" style="text-align:left; font-weight:normal">
+          In Words- {{ invoice.amount_in_words }}
+        </td>
+        <td class="num">Total</td>
+        <td class="num">{{ total_display }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% if entity.bank_name %}
+  <div class="bank" style="padding-left:0; margin-top:3mm">
+    <div class="bold small">Bank Details:</div>
+    <div class="small">Account Name: RTGS/CHEQUE in name of {{ entity.legal_name }}</div>
+    {% if entity.bank_account_no %}<div class="small">Account Number: {{ entity.bank_account_no }}</div>{% endif %}
+    <div class="small">
+      Name of Bank: {{ entity.bank_name }}{% if entity.bank_branch %} &nbsp;Branch: {{ entity.bank_branch }}{% endif %}
+    </div>
+    {% if entity.bank_address %}<div class="small">Address: {{ entity.bank_address }}</div>{% endif %}
+    {% if entity.bank_ifsc %}<div class="small">IFSC code: {{ entity.bank_ifsc }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="sign" style="margin-top:6mm">
+    <div class="for bold">Authorized Signatory</div>
+    <div class="line">
+      {% if entity.signatory_name %}{{ entity.signatory_name }}{% if entity.signatory_title %}, {{ entity.signatory_title }}{% endif %}{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

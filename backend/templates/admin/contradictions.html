@@ -1,0 +1,105 @@
+{% extends "admin/base.html" %}
+{% block title %}Contradictions{% endblock %}
+{% block content %}
+
+<header class="page">
+  <h1>Contradictions</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} {{ 'resolved' if resolved else 'open' }}</span>
+</header>
+<p class="lede">
+  Where two sources disagree and nobody has adjudicated. A bulk import never
+  overwrites a human-verified value: field-verified is confidence 0.95, a
+  scraped registry 0.60, and an incoming value must beat the stored one by 0.15
+  or it writes a row here instead of winning. This page is where that rule
+  becomes somebody's afternoon.
+</p>
+
+<div class="card">
+  <div class="body">
+    <a class="btn {{ 'ghost' if resolved }}" href="/admin/contradictions/">Open</a>
+    <a class="btn {{ 'ghost' if not resolved }}" href="/admin/contradictions/?resolved=true">Resolved</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead>
+      <tr>
+        <th>Entity</th><th>Field</th><th>Stored value</th><th>Incoming value</th>
+        <th>Detected</th><th style="min-width:280px">{{ 'Resolution' if resolved else 'Adjudicate' }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in page.items %}
+      <tr>
+        <td>
+          {% if c.entity_type == 'organisation' %}
+            <a href="/admin/organisations/{{ c.entity_id }}">
+              {{ names.get(c.entity_id, '(unknown)') | truncate_text(34) }}</a>
+          {% else %}<span class="muted">{{ c.entity_type }}</span>{% endif %}
+        </td>
+        <td class="nowrap"><code>{{ c.field_name }}</code></td>
+        <td>{{ c.value_a | truncate_text(44) }}</td>
+        <td>{{ c.value_b | truncate_text(44) }}</td>
+        <td class="muted nowrap">{{ c.detected_at | ago }}</td>
+        <td>
+          {% if c.resolved_at %}
+            {{ chip('resolved', 'ok') }}
+            <div class="muted">{{ c.resolution }}</div>
+            <div class="muted">{{ c.resolved_at | when }}</div>
+          {% else %}
+          <form method="post" action="/admin/contradictions/{{ c.id }}/resolve">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="field">
+              <select name="keep">
+                <option value="a">Keep the stored value</option>
+                <option value="b">Take the incoming value</option>
+              </select>
+            </div>
+            <div class="field">
+              <input type="text" name="note" placeholder="Why (optional, but read later)">
+            </div>
+            <button class="btn small" type="submit">Resolve</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">
+        {% if resolved %}
+          Nothing has been adjudicated yet.
+        {% else %}
+          No open contradictions. Either the sources agree, or nothing has been
+          collected against records a human had already verified.
+        {% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>
+    {% endif %}
+    {% if page.has_next %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="body">
+    <p class="muted" style="margin:0">
+      🔴 Taking the incoming value writes it to the record <em>and</em> moves the
+      provenance row with it — otherwise the registry says one thing and its own
+      audit trail says another. Either way the choice is recorded against the
+      person who made it: a contradiction that disappeared without a name against
+      it is a fact somebody changed and nobody can account for.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

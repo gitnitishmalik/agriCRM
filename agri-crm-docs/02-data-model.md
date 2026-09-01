@@ -214,7 +214,7 @@ Partial indexes matter more than usual here: in a CRM fed by bulk import, a larg
 
 ## 6. Migration and evolution rules
 
-1. **Every change is a migration file.** Django migrations; never `psql` against production.
+1. **Every change is a reviewed SQL file**, applied by `make db-migrate`; never ad-hoc `psql` against production. There is no migration generator — the DDL carries partitioning, generated columns and triggers no ORM can express, so a schema change is something a person wrote and someone else read.
 2. **Additive first.** Add nullable column → backfill in batches → add NOT NULL → drop old column, across separate deploys.
 3. **New enum values are appended,** never renamed or removed. `ALTER TYPE ... ADD VALUE` cannot run inside a transaction in older versions — plan the deploy.
 4. **Never drop a column in the same release that stops writing to it.** One release to stop writing, one to drop.

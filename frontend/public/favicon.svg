@@ -1,8 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- The decay curve: 0.5 ^ (t / half-life). The same function the freshness
-       meter draws, at the smallest scale the app has. -->
-  <rect width="32" height="32" rx="6" fill="#1B3A24"/>
-  <path d="M5 7 C 12 7, 15 16, 18 21 C 21 25, 24 25.6, 27 25.8"
-        fill="none" stroke="#A7BCA6" stroke-width="2.75" stroke-linecap="round"/>
-  <circle cx="18" cy="21" r="2.75" fill="#EDF2EA"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- The theta of Theta Analytics with a sprig growing up its left side. The
+       same drawing as components/Brand.tsx, on a ground rather than
+       transparent: a favicon is composited against whatever colour the
+       browser's tab strip happens to be, and copper on light grey is not
+       legible. Inset by 12% so the drawing does not touch the tile edge. -->
+  <rect width="48" height="48" rx="10" fill="#1B3A24"/>
+  <g fill="none" stroke="#C89A6B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+     transform="translate(24 24) scale(0.88) translate(-24 -24)">
+    <circle cx="31" cy="29" r="11.6"/>
+    <path d="M20.6 29h20.8"/>
+    <path d="M19.9 36.4C15.2 29.4 12.7 20.2 13.4 8.5"/>
+    <path d="M15.1 17.2C9.3 15.8 6.5 11.2 7.7 5.2c5.8 1.4 8.4 5.8 7.4 12Z"/>
+    <path d="M17 28.4C11.2 27.8 8.2 23.6 8.8 17.6c5.8.8 8.6 4.8 8.2 10.8Z"/>
+  </g>
 </svg>

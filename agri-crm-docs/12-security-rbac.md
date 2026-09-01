@@ -25,7 +25,8 @@ This document implements the seven mandatory security safeguards under **Rule 6 
 
 ## 2. Permission model
 
-Django groups + custom permissions, evaluated in DRF permission classes:
+A role on `accounts_user` plus named permissions, evaluated in FastAPI
+dependencies (`api/deps.py`) that each route declares:
 
 ```
 organisation.view · .add · .change · .delete · .merge · .export
@@ -126,7 +127,8 @@ WAF on the ALB: managed rule sets for SQLi/XSS, rate-based rules, and geo-restri
 
 ## 8. Audit logging
 
-**`audit.change_log`** — every INSERT/UPDATE/DELETE on business tables, with changed fields and before/after JSONB, actor, IP and request ID. Written by a generic Django signal handler or a database trigger. Partitioned monthly. **Retained 7 years.**
+**`audit.change_log`** — every INSERT/UPDATE/DELETE on business tables, with changed fields and before/after JSONB, actor, IP and request ID. Written by a database trigger, not application code — a trigger cannot be
+bypassed by a code path that forgot to call it. Partitioned monthly. **Retained 7 years.**
 
 **`audit.data_access_log`** — every PII view, reveal, search, bulk read and export, with record counts and the filter used. 🔴 **Retained one year minimum** (Rule 6 requirement). Exports require a typed reason.
 
@@ -212,14 +214,15 @@ Maintain a processor register: vendor, purpose, data categories, location, agree
 |---|---|
 | SQL injection | ORM only; parameterised raw SQL where unavoidable; no string interpolation into SQL, ever |
 | XSS | React escapes by default; `dangerouslySetInnerHTML` banned by lint rule |
-| CSRF | Django CSRF for session auth; JWT in `Authorization` header (not cookies) for the API |
+| CSRF | The `/admin` console issues and checks a per-session CSRF token on every form post (`api/admin/security.py`); the JSON API takes its JWT in the `Authorization` header, not a cookie, so it is not CSRF-reachable |
 | File upload | Extension + MIME allow-list, size limits, virus scan, served from S3 with `Content-Disposition: attachment` and never from the app origin |
 | Dependencies | Dependabot; `pip-audit` and `npm audit` in CI; build fails on High/Critical |
 | Secrets in code | `gitleaks` pre-commit and CI |
 | Session | 15-min access token, 7-day rotating refresh, absolute session cap 30 days, revoke-all on password change |
-| Password | Django's PBKDF2/Argon2, minimum 12 chars, common-password blocklist |
-| Brute force | `django-axes` — lockout after 10 failures in 15 minutes |
-| Headers | HSTS, CSP, X-Content-Type-Options, Referrer-Policy, X-Frame-Options DENY |
+| Password | PBKDF2-SHA256 in Django's hash format, kept verbatim because every existing hash is in it — changing the algorithm is a migration, not an edit. Minimum 12 chars, common-password blocklist. |
+| Brute force | Lockout after 10 failures in 15 minutes, keyed on (username, IP, user-agent). Implemented in `api/routers/auth.py` over the same `axes_accessattempt` table django-axes used, so existing lockout state carried across the migration rather than being reset. |
+| Headers | HSTS, CSP, X-Content-Type-Options, Referrer-Policy, X-Frame-Options DENY. 🔴 **Not yet implemented in the service** — currently expected from the edge (CloudFront/ALB). Add a response middleware before the `/admin` console is reachable from outside a VPN. |
+| Host header | 🔴 **Gap.** Django's `ALLOWED_HOSTS` rejected a forged `Host`; FastAPI has no equivalent by default and none is configured. Add `TrustedHostMiddleware` with the real domains, or terminate it at the edge. |
 
 ## 14. Access lifecycle
 

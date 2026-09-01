@@ -1,0 +1,87 @@
+{% extends "admin/base.html" %}
+{% block title %}Extractions{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Document extractions</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} attempts</span>
+</header>
+<p class="lede">
+  What the model read off uploaded documents, beside what a human accepted. If
+  a model misreads a rate, the evidence of what it read is still here
+  afterwards — and that comparison is where the evaluation cases come from.
+</p>
+
+<div class="grid">
+  {% for s, count in by_status.items() %}
+  <div class="stat"><div class="n">{{ count }}</div><div class="k">{{ s | title }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>File</th><th>Path</th><th>Status</th><th>Model</th>
+      <th class="num">Duration</th><th class="num">Warnings</th><th>Duplicate</th>
+      <th>Accepted</th><th>Uploaded</th></tr></thead>
+    <tbody>
+      {% for e in page.items %}
+      <tr>
+        <td>{{ e.file_name | truncate_text(30) }}
+          {% if e.sha256 %}<div class="muted"><code>{{ e.sha256.hex()[:12] }}…</code></div>{% endif %}
+        </td>
+        <td>
+          {% if e.extraction_path == 'vision' %}
+            {{ chip('vision', 'warn') }}
+          {% elif e.extraction_path %}
+            {{ chip(e.extraction_path, 'ok') }}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{{ status_chip(e.status) }}
+          {% if e.error %}<div class="muted">{{ e.error | truncate_text(40) }}</div>{% endif %}
+        </td>
+        <td class="muted">{{ e.model or '—' }}</td>
+        <td class="num muted">{{ (e.duration_ms ~ ' ms') if e.duration_ms else '—' }}</td>
+        <td class="num muted">{{ (e.warnings | length) or '—' }}</td>
+        <td>
+          {% if e.duplicate_of_invoice_id %}
+            <a href="/admin/invoices/{{ e.duplicate_of_invoice_id }}">{{ chip('duplicate', 'bad') }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if e.accepted_at %}{{ chip('accepted', 'ok') }}
+            <div class="muted">{{ e.accepted_at | when }}</div>
+          {% else %}<span class="muted">not accepted</span>{% endif %}
+        </td>
+        <td class="muted nowrap">{{ e.created_at | ago }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="empty">Nothing has been uploaded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>{% endif %}
+    {% if page.has_next %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="body">
+    <p class="muted" style="margin:0">
+      🔴 <strong>Path is the column to scan.</strong> Every invoice this business
+      generates is a computer-generated PDF carrying its own text. Rasterising
+      one and asking a vision model to squint at it throws away a perfect
+      transcript and then asks a model to reconstruct it. Measured on a real
+      invoice: the text path was exact in 5–10 seconds; an 11B vision model took
+      14 seconds and confidently produced a complete fictional invoice — number
+      “12345” against an actual TEPL/2026-27/08. Vision is the fallback for
+      photos and scans only, and a vision reading always gets an unconditional
+      review warning.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

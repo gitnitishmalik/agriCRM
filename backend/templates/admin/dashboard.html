@@ -1,0 +1,137 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Data operations</h1>
+  <span class="sub">Signed in as {{ caller.user.full_name }} · {{ caller.user.role }}</span>
+</header>
+<p class="lede">
+  Collected-data health first, because it is the thing that decays silently. A
+  receivables figure is wrong for a day and somebody notices; a source that
+  stopped refreshing three months ago is invisible until a count is quoted to a
+  customer.
+</p>
+
+{% if open_contradictions or unmatched %}
+<div class="notice warn">
+  {% if open_contradictions %}
+    <strong>{{ open_contradictions }}</strong> unresolved
+    <a href="/admin/contradictions/">contradiction{{ '' if open_contradictions == 1 else 's' }}</a>
+    — two sources disagree and nobody has adjudicated.
+  {% endif %}
+  {% if unmatched %}
+    <strong>{{ unmatched }}</strong>
+    <a href="/admin/reconciliation/">unmatched payment event{{ '' if unmatched == 1 else 's' }}</a>
+    — money arrived that is not against an invoice.
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="stat"><div class="n">{{ "{:,}".format(org_total) }}</div><div class="k">Organisations</div></div>
+  <div class="stat"><div class="n">{{ "{:,}".format(provenance_total) }}</div><div class="k">Current field values</div></div>
+  <div class="stat"><div class="n">{{ "{:,}".format(invoice_total) }}</div><div class="k">Invoices</div></div>
+  <div class="stat"><div class="n">{{ outstanding | inr }}</div><div class="k">Outstanding</div></div>
+  <div class="stat {{ 'flag' if open_contradictions }}"><div class="n">{{ open_contradictions }}</div><div class="k">Open contradictions</div></div>
+  <div class="stat"><div class="n">{{ pending_proposals }}</div><div class="k">Pending AI proposals</div></div>
+</div>
+
+<div class="card">
+  <h2>Where the registry came from</h2>
+  {% if by_source %}
+  <div class="scroll"><table>
+    <thead><tr><th>Source</th><th>Code</th><th class="num">Current values</th><th></th></tr></thead>
+    <tbody>
+      {% for code, name, count in by_source %}
+      <tr>
+        <td>{{ name }}</td>
+        <td><code>{{ code }}</code></td>
+        <td class="num">{{ "{:,}".format(count) }}</td>
+        <td><a href="/admin/provenance/?source={{ code }}">Inspect values</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="pager">
+    Last collection: {{ last_collection | ago }}
+    {% if last_collection %}<span class="muted">· {{ last_collection | when }}</span>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty">
+    No field provenance recorded yet. Run a collector — <code>make collector ARGS="--dry-run"</code>
+    first, then without the flag.
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Quality tiers</h2>
+  <div class="body">
+    <p class="muted" style="margin-top:0">
+      Doc 07. Bronze is a lead, not a fact, and is never messaged. Quarantine is
+      excluded from search, campaigns and counts — never silently deleted.
+      Targets at 12 months: Gold 15–25% · Silver 40–50% · Bronze 25–35% · Quarantine &lt;5%.
+    </p>
+    <table>
+      <thead><tr><th>Tier</th><th class="num">Count</th><th class="num">Share</th></tr></thead>
+      <tbody>
+        {% for tier in ['gold', 'silver', 'bronze', 'quarantine'] %}
+        <tr>
+          <td>{{ status_chip(tier) }}</td>
+          <td class="num">{{ "{:,}".format(by_tier.get(tier, 0)) }}</td>
+          <td class="num">
+            {% if org_total %}{{ "%.1f%%" | format(by_tier.get(tier, 0) / org_total * 100) }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Organisation types</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Type</th><th class="num">Count</th><th></th></tr></thead>
+    <tbody>
+      {% for org_type, count in by_type %}
+      <tr>
+        <td>{{ org_type.replace('_', ' ') | title }}</td>
+        <td class="num">{{ "{:,}".format(count) }}</td>
+        <td><a href="/admin/organisations/?org_type={{ org_type }}">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="empty">No organisations yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>Source register · 🔴 R1</h2>
+  <div class="body">
+    <p class="muted" style="margin-top:0">
+      A collector asserts <code>is_approved</code> before its first request and
+      exits non-zero if it is false. This table is not documentation about the
+      rule — it <em>is</em> the rule.
+    </p>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Code</th><th>Name</th><th>Kind</th><th>Approved</th><th>PII</th></tr></thead>
+    <tbody>
+      {% for s in sources %}
+      <tr>
+        <td><code>{{ s.code }}</code></td>
+        <td><a href="/admin/sources/">{{ s.name }}</a></td>
+        <td class="muted">{{ s.kind.replace('_', ' ') }}</td>
+        <td>{{ chip('approved', 'ok') if s.is_approved else chip('not approved', 'bad') }}</td>
+        <td>{{ chip('contains PII', 'bad') if s.contains_pii else chip('no PII', 'ok') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No sources registered.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% endblock %}

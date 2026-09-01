@@ -1,8 +1,8 @@
 /**
  * AgriCRM design tokens — agricultural farming theme.
  *
- * Three colour families, each with exactly one job. If you are adding a
- * colour and it does not belong to one of these three, it does not belong.
+ * Four colour families, each with exactly one job. If you are adding a
+ * colour and it does not belong to one of these four, it does not belong.
  *
  *   1. BRAND GREEN — chrome and identity. The rail, primary actions, links,
  *      active states, the mark. This is the crop: growing, cultivated, alive.
@@ -16,6 +16,12 @@
  *
  *   3. QUALITY TIERS — status, and nothing else. Four inks from Doc 07 §2,
  *      used only on tier chips, meters and tier-keyed strokes.
+ *
+ *   4. COPPER — the brand lockup, and nothing else. The theta mark and the
+ *      AgriCRM wordmark. It is the one colour on screen that is allowed to
+ *      mean "this product" rather than "this control" or "this status", and
+ *      it earns that by never appearing anywhere a user can click or read a
+ *      value. See the note beside the token.
  *
  * On the tier re-key: Gold used to be a deep green (#14654A) back when the
  * chrome was neutral and green was free. It is not free any more — a green
@@ -69,6 +75,13 @@ export default {
         'ink-2': '#5C574B', // secondary text, labels
         'ink-3': '#837C6B', // captions, placeholders, disabled
 
+        // Text over the sign-in photograph. Warmer than the rail inks, which
+        // are tuned for a green ground and go slightly cold over soil. Both
+        // are checked against the scrim's darkest stop rather than against
+        // the photograph, because a photograph is not a contrast guarantee:
+        // 14.8:1 and 10.2:1 on rgba(20,13,8,0.94).
+        hero: { ink: '#F5EEE4', 'ink-2': '#D3C7B5' },
+
         // -- 3. Quality tiers: status only --------------------------------
         // Contrast of each ink on its own soft fill, checked: gold 5.4:1,
         // silver 7.1:1, bronze 5.8:1, quarantine 6.9:1. All clear AA at the
@@ -77,6 +90,17 @@ export default {
         silver: { DEFAULT: '#4A5464', soft: '#EDEFF3', line: '#CDD3DD' },
         bronze: { DEFAULT: '#8E4420', soft: '#F7E7DC', line: '#E5C3AB' },
         quarantine: { DEFAULT: '#85292E', soft: '#F8E8E8', line: '#E4BCBD' },
+
+        // -- 4. Copper: the brand lockup, and nothing else -----------------
+        // The mark and the wordmark. Never a chip, a meter, a stroke or a
+        // button. It sits next to the bronze tier ink in hue, which is only
+        // safe because the two never appear on the same surface and a bronze
+        // chip always carries the word "Bronze" beside its colour.
+        //
+        // Two values because one cannot clear AA on both grounds: `DEFAULT`
+        // is 5.1:1 on canvas, `light` is 4.9:1 on the rail and on the
+        // photograph's soil.
+        copper: { DEFAULT: '#9C5A29', light: '#C89A6B' },
 
         // -- System affordance, not data ----------------------------------
         // Focus stays blue. It is now the only blue in the application, so a
@@ -93,6 +117,11 @@ export default {
         sans: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
         deva: ['"IBM Plex Sans Devanagari"', '"IBM Plex Sans"', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        // A fourth role, still the same superfamily. It sets the wordmark and
+        // nothing else — the one piece of type that is the product naming
+        // itself rather than the interface labelling something. One weight,
+        // never used for UI text.
+        serif: ['"IBM Plex Serif"', 'Georgia', 'serif'],
       },
 
       // Tighter than a marketing scale. A CRM's base is 14px, not 16 —

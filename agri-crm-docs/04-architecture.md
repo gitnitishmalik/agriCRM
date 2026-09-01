@@ -4,7 +4,7 @@
 
 ```
    ┌─────────────┐   ┌─────────────┐   ┌──────────────┐
-   │  Web (React)│   │ Mobile (RN) │   │ Django Admin │
+   │  Web (React)│   │ Mobile (RN) │   │ /admin console│
    │  BD, ops,   │   │ Field agents│   │  Data ops    │
    │  leadership │   │  offline    │   │              │
    └──────┬──────┘   └──────┬──────┘   └──────┬───────┘
@@ -16,7 +16,7 @@
                   └─────────┬──────────┘
                             │
         ┌───────────────────▼────────────────────┐
-        │          API service (Django/DRF)      │
+        │          API service (FastAPI)         │
         │  auth · RBAC · RLS · validation · CRUD │
         └───┬──────────┬───────────┬─────────────┘
             │          │           │
@@ -196,7 +196,7 @@ The **raw landing zone is not optional**. When you discover in month nine that y
 
 | Trigger | Action |
 |---|---|
-| p95 API latency >400ms | Add API tasks; check for N+1 queries with `django-silk`; add `select_related`/`prefetch_related` |
+| p95 API latency >400ms | Add API tasks; check for N+1 queries by logging SQL under `echo=True` on the engine; add `selectinload`/`joinedload` to the offending query |
 | Dashboard queries slow the transactional workload | Route read-only analytical queries to the RDS read replica |
 | Farmer table >5M rows | Confirm all queries filter on `state_id`; verify partition pruning in `EXPLAIN` |
 | Search p95 >600ms | Introduce OpenSearch with CDC |
@@ -205,7 +205,7 @@ The **raw landing zone is not optional**. When you discover in month nine that y
 | Celery queue depth persistently >10k | Add workers; split heavy queues; check for a poison message in a retry loop |
 | Connection count near RDS limit | PgBouncer in transaction pooling mode (note: disables session-level features — test prepared statements) |
 
-**The single most important scaling rule:** every query against `core.farmer` must include `state_id` in its WHERE clause, or Postgres scans all 36 partitions. Enforce this with a Django manager that requires it, and assert partition pruning in tests.
+**The single most important scaling rule:** every query against `core.farmer` must include `state_id` in its WHERE clause, or Postgres scans all 36 partitions. Enforce this in the query helper that builds every `core.farmer` select, and assert partition pruning in tests. `/farmers/` requires a `state` parameter for this reason.
 
 ## 7. Reliability
 
@@ -216,7 +216,7 @@ The **raw landing zone is not optional**. When you discover in month nine that y
 | Multi-AZ | RDS Multi-AZ; Fargate tasks spread across 3 AZs |
 | Idempotency | `Idempotency-Key` header on all POSTs; `client_uuid` on mobile writes |
 | Retries | Celery: exponential backoff, max 5, then dead-letter queue with an alert |
-| Rate limits | Per-user API throttling (DRF); per-second throttle on Meta and SES calls |
+| Rate limits | Per-user API throttling in middleware; per-second throttle on Meta and SES calls |
 | Circuit breaker | If Meta returns 5xx or 429 for 60s, pause the messaging queue and alert — don't burn your quality rating retrying into a wall |
 | Graceful degradation | If WhatsApp is down, campaigns queue rather than fail. If search is down, fall back to Postgres LIKE. |
 | Poison messages | Max 5 retries then dead-letter; never infinite-retry |

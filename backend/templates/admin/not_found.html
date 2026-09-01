@@ -1,0 +1,11 @@
+{% extends "admin/base.html" %}
+{% block title %}Not found{% endblock %}
+{% block content %}
+<header class="page"><h1>Not found</h1></header>
+<div class="notice bad">
+  No such {{ what }}. It may have been merged into another record — nothing in
+  this system is hard-deleted, so a stored id stays resolvable rather than
+  turning into a 404 that looks like the id was wrong.
+</div>
+<p><a class="btn ghost" href="/admin/">Back to the dashboard</a></p>
+{% endblock %}

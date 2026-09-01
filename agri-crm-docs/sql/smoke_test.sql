@@ -288,4 +288,129 @@ BEGIN
                r.name, r.state_name, r.active_people;
 END $$;
 
+-- =====================================================================
+--  Billing  (INVOICE.md)
+-- =====================================================================
+
+-- TEST 16: area converts to hectares on the way in
+--
+-- 🔴 CLAUDE.md requires every area in hectares. Acres and square kilometres
+-- are input conveniences and the generated column is where they stop being
+-- ambiguous. 2301 acres and 65.7 sq km are both real quantities off real
+-- invoices.
+DO $$
+DECLARE ent uuid; inv uuid; acre_ha numeric; sqkm_ha numeric;
+BEGIN
+  INSERT INTO crm.billing_entity (code, legal_name, state_code, gstin, valid_from)
+  VALUES ('TEST', 'Smoke Test Entity', '07', '07AAHCT0066D1ZM', '2024-04-01')
+  RETURNING id INTO ent;
+
+  INSERT INTO crm.invoice (billing_entity_id, entity_code, invoice_date, buyer_name)
+  VALUES (ent, 'TEST', '2026-06-16', 'Syngenta India Private Limited')
+  RETURNING id INTO inv;
+
+  INSERT INTO crm.invoice_line
+    (invoice_id, line_no, description, hsn_sac, quantity, unit, rate,
+     line_taxable_value, line_tax_amount, line_total)
+  VALUES
+    (inv, 1, 'Drone Spraying Services', '998611', 2301, 'acre', 150,
+     345150.00, 62127.00, 407277.00),
+    (inv, 2, 'Base Map Generation',     '997319', 65.7, 'sq_km', 32000,
+     2102400.00, 0, 2102400.00);
+
+  SELECT quantity_ha INTO acre_ha FROM crm.invoice_line WHERE invoice_id=inv AND line_no=1;
+  SELECT quantity_ha INTO sqkm_ha FROM crm.invoice_line WHERE invoice_id=inv AND line_no=2;
+
+  -- 2301 x 0.40468564224 = 931.18166..., stored to 4 dp as 931.1817
+  ASSERT acre_ha = 931.1817,
+    format('TEST 16 FAILED: 2301 acres -> %s ha, expected 931.1817', acre_ha);
+  ASSERT sqkm_ha = 6570,
+    format('TEST 16 FAILED: 65.7 sq km -> %s ha, expected 6570', sqkm_ha);
+  RAISE NOTICE 'TEST 16 PASS  area to hectares: 2301 ac = % ha, 65.7 km2 = % ha',
+               acre_ha, sqkm_ha;
+END $$;
+
+-- TEST 17: line amounts roll up to the header by trigger
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT i.* INTO r FROM crm.invoice i
+   WHERE i.entity_code='TEST' ORDER BY i.created_at DESC LIMIT 1;
+  ASSERT r.taxable_value = 2447550.00,
+    format('TEST 17 FAILED: taxable=%s expected 2447550.00', r.taxable_value);
+  ASSERT r.tax_amount = 62127.00,
+    format('TEST 17 FAILED: tax=%s expected 62127.00', r.tax_amount);
+  ASSERT r.total_value = 2509677.00,
+    format('TEST 17 FAILED: total=%s expected 2509677.00', r.total_value);
+  RAISE NOTICE 'TEST 17 PASS  header rollup: taxable %, tax %, total %',
+               r.taxable_value, r.tax_amount, r.total_value;
+END $$;
+
+-- TEST 18: 🔴 an allocated invoice number can never be changed
+--
+-- This is the constraint that makes the FY26 defect impossible. That data
+-- cancelled TEPL/2026-27/03 and reissued a different document under the same
+-- number; the trigger now refuses.
+DO $$
+DECLARE inv uuid; ok boolean := false;
+BEGIN
+  SELECT id INTO inv FROM crm.invoice WHERE entity_code='TEST' LIMIT 1;
+  UPDATE crm.invoice
+     SET invoice_no='TEST/2026-27/1', financial_year='2026-27',
+         status='issued', issued_at=now()
+   WHERE id=inv;
+
+  BEGIN
+    UPDATE crm.invoice SET invoice_no='TEST/2026-27/2' WHERE id=inv;
+  EXCEPTION WHEN raise_exception THEN
+    ok := true;
+  END;
+
+  ASSERT ok, 'TEST 18 FAILED: an issued invoice number was allowed to change';
+  RAISE NOTICE 'TEST 18 PASS  allocated invoice number is immutable';
+END $$;
+
+-- TEST 19: the same number cannot be used twice in one entity
+DO $$
+DECLARE ent uuid; ok boolean := false;
+BEGIN
+  SELECT billing_entity_id INTO ent FROM crm.invoice WHERE entity_code='TEST' LIMIT 1;
+  BEGIN
+    INSERT INTO crm.invoice
+      (billing_entity_id, entity_code, invoice_no, financial_year,
+       invoice_date, buyer_name, status, issued_at)
+    VALUES (ent, 'TEST', 'TEST/2026-27/1', '2026-27',
+            '2026-07-14', 'Syngenta India Private Limited', 'issued', now());
+  EXCEPTION WHEN unique_violation THEN
+    ok := true;
+  END;
+  ASSERT ok, 'TEST 19 FAILED: a duplicate invoice number was accepted';
+  RAISE NOTICE 'TEST 19 PASS  duplicate invoice number rejected';
+END $$;
+
+-- TEST 20: payments drive status, and a cancellation reason is mandatory
+DO $$
+DECLARE inv uuid; st crm.invoice_status; ok boolean := false;
+BEGIN
+  SELECT id INTO inv FROM crm.invoice WHERE invoice_no='TEST/2026-27/1';
+
+  INSERT INTO crm.invoice_payment (invoice_id, received_on, amount, mode)
+  VALUES (inv, '2026-08-01', 1000000.00, 'rtgs');
+  SELECT status INTO st FROM crm.invoice WHERE id=inv;
+  ASSERT st = 'part_paid', format('TEST 20 FAILED: part payment gave %s', st);
+
+  INSERT INTO crm.invoice_payment (invoice_id, received_on, amount, mode)
+  VALUES (inv, '2026-08-20', 1509677.00, 'rtgs');
+  SELECT status INTO st FROM crm.invoice WHERE id=inv;
+  ASSERT st = 'paid', format('TEST 20 FAILED: full payment gave %s', st);
+
+  BEGIN
+    UPDATE crm.invoice SET status='cancelled', cancelled_at=now() WHERE id=inv;
+  EXCEPTION WHEN check_violation THEN
+    ok := true;
+  END;
+  ASSERT ok, 'TEST 20 FAILED: cancelled without a reason';
+  RAISE NOTICE 'TEST 20 PASS  payments drive status; cancellation needs a reason';
+END $$;
+
 ROLLBACK;   -- comment out to keep the sample data

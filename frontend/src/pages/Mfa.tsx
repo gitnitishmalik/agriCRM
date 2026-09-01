@@ -10,6 +10,7 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEnrolMfa, useMe, useVerifyMfa } from '../api/auth'
+import { AuthAside, AuthDecor, AuthMobileBrand } from '../layout/AuthLayout'
 
 export function MfaPage() {
   const navigate = useNavigate()
@@ -25,83 +26,93 @@ export function MfaPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        <div className="label">Second step</div>
-        <h1 className="mt-1 text-2xl font-semibold text-ink">Enter your code</h1>
-        <p className="mt-1.5 text-base text-ink-2">
-          {me ? `${roleName(me.role)} accounts` : 'This account'} require a second factor at
-          every sign-in.
-        </p>
+    // The same two halves as sign-in. Step two of one flow should not look
+    // like a different product than step one did four seconds earlier.
+    <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
+      <AuthAside />
 
-        <form onSubmit={onSubmit} className="mt-8 space-y-4" noValidate>
-          <div>
-            <label htmlFor="code" className="label mb-1.5 block">
-              Six-digit code
-            </label>
-            <input
-              id="code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              className="input text-center font-mono text-xl tracking-[0.35em]"
-            />
-          </div>
+      <section className="relative flex items-center justify-center overflow-hidden bg-canvas px-6 py-12">
+        <AuthDecor />
 
-          {verify.isError && (
-            <p role="alert" className="text-sm text-quarantine">
-              That code did not match. Codes expire every 30 seconds — try the current one.
-            </p>
-          )}
+        <div className="relative z-10 w-full max-w-sm">
+          <AuthMobileBrand />
 
-          <button type="submit" disabled={verify.isPending || code.length < 6} className="btn-primary w-full">
-            {verify.isPending ? 'Checking' : 'Continue'}
-          </button>
-        </form>
+          <div className="label">Second step</div>
+          <h1 className="mt-1 text-2xl font-semibold text-ink">Enter your code</h1>
+          <p className="mt-1.5 text-base text-ink-2">
+            {me ? `${roleName(me.role)} accounts` : 'This account'} require a second factor at
+            every sign-in.
+          </p>
 
-        <div className="mt-8 border-t border-line pt-5">
-          <p className="text-sm text-ink-2">No authenticator set up yet?</p>
-          <button
-            type="button"
-            onClick={() => enrol.mutate()}
-            className="link mt-1.5 text-sm"
-          >
-            Set up an authenticator app
-          </button>
-
-          {enrol.data && (
-            <div className="mt-4 rounded-card border border-line bg-surface p-4">
-              <div className="label mb-2">1. Scan this with your authenticator</div>
-
-              {/* The SVG comes from our own backend, built by the qrcode
-                  library from a URI we generated — not from user input. */}
-              <div
-                className="mx-auto w-40 [&>svg]:h-full [&>svg]:w-full"
-                aria-label="QR code for authenticator enrolment"
-                dangerouslySetInnerHTML={{ __html: enrol.data.qr_svg }}
+          <form onSubmit={onSubmit} className="mt-8 space-y-4" noValidate>
+            <div>
+              <label htmlFor="code" className="label mb-1.5 block">
+                Six-digit code
+              </label>
+              <input
+                id="code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                className="input text-center font-mono text-xl tracking-[0.35em]"
               />
-
-              <div className="mt-4 border-t border-line pt-3">
-                <div className="label mb-1.5">Or enter this key by hand</div>
-                <code className="block break-all rounded-chip bg-sunken px-2 py-1.5 font-mono text-sm text-ink">
-                  {enrol.data.secret}
-                </code>
-              </div>
-
-              <p className="mt-3 text-sm text-ink-2">
-                2. Enter the six-digit code it shows in the box above.
-              </p>
-              <p className="mt-2 text-xs text-ink-3">
-                Google Authenticator, Microsoft Authenticator, Authy, 1Password and
-                Bitwarden all work.
-              </p>
             </div>
-          )}
+
+            {verify.isError && (
+              <p role="alert" className="text-sm text-quarantine">
+                That code did not match. Codes expire every 30 seconds — try the current one.
+              </p>
+            )}
+
+            <button type="submit" disabled={verify.isPending || code.length < 6} className="btn-primary w-full">
+              {verify.isPending ? 'Checking' : 'Continue'}
+            </button>
+          </form>
+
+          <div className="mt-8 border-t border-line pt-5">
+            <p className="text-sm text-ink-2">No authenticator set up yet?</p>
+            <button
+              type="button"
+              onClick={() => enrol.mutate()}
+              className="link mt-1.5 text-sm"
+            >
+              Set up an authenticator app
+            </button>
+
+            {enrol.data && (
+              <div className="mt-4 rounded-card border border-line bg-surface p-4">
+                <div className="label mb-2">1. Scan this with your authenticator</div>
+
+                {/* The SVG comes from our own backend, built by the qrcode
+                    library from a URI we generated — not from user input. */}
+                <div
+                  className="mx-auto w-40 [&>svg]:h-full [&>svg]:w-full"
+                  aria-label="QR code for authenticator enrolment"
+                  dangerouslySetInnerHTML={{ __html: enrol.data.qr_svg }}
+                />
+
+                <div className="mt-4 border-t border-line pt-3">
+                  <div className="label mb-1.5">Or enter this key by hand</div>
+                  <code className="block break-all rounded-chip bg-sunken px-2 py-1.5 font-mono text-sm text-ink">
+                    {enrol.data.secret}
+                  </code>
+                </div>
+
+                <p className="mt-3 text-sm text-ink-2">
+                  2. Enter the six-digit code it shows in the box above.
+                </p>
+                <p className="mt-2 text-xs text-ink-3">
+                  Google Authenticator, Microsoft Authenticator, Authy, 1Password and
+                  Bitwarden all work.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   )
 }

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Console{% endblock %} · AgriCRM</title>
+<style>
+/*
+  One stylesheet, inline, no build step and no CDN.
+
+  🔴 A data-operations console is the tool you reach for when something is
+  wrong — often when the network is bad, sometimes when a deploy is half
+  finished. Every asset it needs to render is in this file, so it comes up
+  when the thing it is being used to diagnose is down.
+*/
+:root {
+  --ink: #16211c;
+  --ink-soft: #5b6b63;
+  --line: #dde5e0;
+  --bg: #f6f8f6;
+  --card: #ffffff;
+  --leaf: #2f6f4e;
+  --leaf-soft: #eaf3ee;
+  --soil: #8a6a3d;
+  --alert: #a4342b;
+  --alert-soft: #fbeceb;
+  --warn: #9a6a12;
+  --warn-soft: #fdf3e2;
+  --ok: #2f6f4e;
+  --radius: 8px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.55 "Segoe UI", -apple-system, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+a { color: var(--leaf); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: "Cascadia Mono", Consolas, "SF Mono", monospace; font-size: 12.5px; }
+
+/* Layout */
+.shell { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+nav.side {
+  background: var(--ink); color: #cfdad4; padding: 18px 0; position: sticky;
+  top: 0; height: 100vh; overflow-y: auto;
+}
+nav.side .brand {
+  padding: 0 18px 16px; font-weight: 600; font-size: 15px; color: #fff;
+  letter-spacing: .2px;
+}
+nav.side .brand small { display: block; font-weight: 400; font-size: 11px; color: #8ba396; }
+nav.side h6 {
+  margin: 18px 18px 6px; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .09em; color: #7d938a; font-weight: 600;
+}
+nav.side a { display: block; padding: 6px 18px; color: #cfdad4; font-size: 13.5px; }
+nav.side a:hover { background: #22322b; text-decoration: none; color: #fff; }
+nav.side a.on { background: var(--leaf); color: #fff; font-weight: 500; }
+nav.side .count {
+  float: right; background: #3a4a42; border-radius: 9px; padding: 0 6px;
+  font-size: 11px; line-height: 17px; min-width: 20px; text-align: center;
+}
+nav.side a.on .count { background: rgba(255,255,255,.25); }
+nav.side .count.flag { background: var(--alert); color: #fff; }
+
+main { padding: 22px 26px 60px; max-width: 1500px; }
+header.page { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+header.page h1 { font-size: 21px; margin: 0; font-weight: 600; }
+header.page .sub { color: var(--ink-soft); font-size: 13px; }
+.lede { color: var(--ink-soft); margin: 0 0 18px; max-width: 74ch; }
+
+/* Cards and tables */
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  margin-bottom: 18px; overflow: hidden;
+}
+.card > h2 {
+  margin: 0; padding: 11px 14px; font-size: 13px; font-weight: 600;
+  border-bottom: 1px solid var(--line); background: #fbfcfb;
+}
+.card > .body { padding: 14px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px; }
+.stat .n { font-size: 25px; font-weight: 600; letter-spacing: -.5px; }
+.stat .k { color: var(--ink-soft); font-size: 12px; margin-top: 1px; }
+.stat.flag .n { color: var(--alert); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 600; background: #fbfcfb; }
+tbody tr:hover { background: #fafcfa; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+
+/* Chips */
+.chip {
+  display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11.5px;
+  font-weight: 500; border: 1px solid transparent; white-space: nowrap;
+}
+.chip.ok { background: var(--leaf-soft); color: var(--leaf); border-color: #c6ded1; }
+.chip.warn { background: var(--warn-soft); color: var(--warn); border-color: #edd9ae; }
+.chip.bad { background: var(--alert-soft); color: var(--alert); border-color: #f0c8c5; }
+.chip.mute { background: #eef1ef; color: var(--ink-soft); border-color: var(--line); }
+.chip.gold { background: #fdf6e0; color: #8a6a12; border-color: #ecdcae; }
+.chip.silver { background: #eef1f3; color: #5c6b74; border-color: #d5dde2; }
+.chip.bronze { background: #f6eee6; color: #85603c; border-color: #e4d2bf; }
+
+/* Forms */
+input[type=text], input[type=email], input[type=password], input[type=date],
+input[type=number], select, textarea {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px;
+  font: inherit; background: #fff; color: var(--ink);
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--leaf-soft); border-color: var(--leaf); }
+label { display: block; font-size: 12px; color: var(--ink-soft); margin-bottom: 3px; font-weight: 500; }
+.field { margin-bottom: 12px; }
+button, .btn {
+  display: inline-block; padding: 7px 13px; border-radius: 5px; border: 1px solid var(--leaf);
+  background: var(--leaf); color: #fff; font: inherit; font-weight: 500; cursor: pointer;
+}
+button:hover, .btn:hover { background: #275c41; text-decoration: none; }
+.btn.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+.btn.ghost:hover { background: #f2f5f3; }
+.btn.danger { background: var(--alert); border-color: var(--alert); }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+
+/* Filters */
+form.filters { display: flex; gap: 9px; flex-wrap: wrap; align-items: flex-end; }
+form.filters .field { margin: 0; min-width: 150px; }
+
+/* Notices */
+.notice { padding: 10px 13px; border-radius: var(--radius); margin-bottom: 14px; font-size: 13px; border: 1px solid; }
+.notice.info { background: var(--leaf-soft); border-color: #c6ded1; color: #1f4c36; }
+.notice.warn { background: var(--warn-soft); border-color: #edd9ae; color: #7a530b; }
+.notice.bad { background: var(--alert-soft); border-color: #f0c8c5; color: #8a2a22; }
+
+.pager { display: flex; gap: 9px; align-items: center; padding: 11px 14px; color: var(--ink-soft); font-size: 12.5px; }
+.empty { padding: 28px 14px; text-align: center; color: var(--ink-soft); }
+dl.kv { margin: 0; display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 5px 16px; }
+dl.kv dt { color: var(--ink-soft); font-size: 12.5px; }
+dl.kv dd { margin: 0; }
+.muted { color: var(--ink-soft); }
+.nowrap { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="side">
+    <div class="brand">
+      AgriCRM
+      <small>Data operations console</small>
+    </div>
+
+    <h6>Registry</h6>
+    <a href="/admin/organisations/" class="{{ 'on' if section == 'organisations' }}">Organisations</a>
+    <a href="/admin/geography/" class="{{ 'on' if section == 'geography' }}">Geography</a>
+
+    <h6>Collected data</h6>
+    <a href="/admin/sources/" class="{{ 'on' if section == 'sources' }}">Source register</a>
+    <a href="/admin/provenance/" class="{{ 'on' if section == 'provenance' }}">Field provenance</a>
+    <a href="/admin/contradictions/" class="{{ 'on' if section == 'contradictions' }}">
+      Contradictions
+      {% if nav_counts and nav_counts.contradictions %}
+        <span class="count flag">{{ nav_counts.contradictions }}</span>
+      {% endif %}
+    </a>
+
+    <h6>Billing</h6>
+    <a href="/admin/invoices/" class="{{ 'on' if section == 'invoices' }}">Invoices</a>
+    <a href="/admin/receivables/" class="{{ 'on' if section == 'receivables' }}">Receivables</a>
+    <a href="/admin/deliveries/" class="{{ 'on' if section == 'deliveries' }}">Deliveries</a>
+    <a href="/admin/reconciliation/" class="{{ 'on' if section == 'reconciliation' }}">
+      Reconciliation
+      {% if nav_counts and nav_counts.reconciliation %}
+        <span class="count flag">{{ nav_counts.reconciliation }}</span>
+      {% endif %}
+    </a>
+
+    <h6>AI</h6>
+    <a href="/admin/proposals/" class="{{ 'on' if section == 'proposals' }}">Copilot proposals</a>
+    <a href="/admin/extractions/" class="{{ 'on' if section == 'extractions' }}">Extractions</a>
+    <a href="/admin/tax-codes/" class="{{ 'on' if section == 'tax_codes' }}">Tax codes</a>
+
+    <h6>{{ caller.user.full_name if caller else '' }}</h6>
+    <a href="/admin/">Dashboard</a>
+    <a href="/api/docs" target="_blank" rel="noopener">API docs</a>
+    <form method="post" action="/admin/logout" style="padding: 6px 18px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn ghost small" type="submit">Sign out</button>
+    </form>
+  </nav>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

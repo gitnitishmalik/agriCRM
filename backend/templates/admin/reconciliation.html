@@ -1,0 +1,82 @@
+{% extends "admin/base.html" %}
+{% block title %}Reconciliation{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Payment reconciliation</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} need a person</span>
+</header>
+<p class="lede">
+  Events that did not match cleanly. An amount we did not ask for might be a
+  partial payment, a currency error or a different invoice — and a system that
+  picks one of those on the customer's behalf will eventually pick wrong on a
+  large number. Oldest first, because a queue sorted newest-first is one where
+  the oldest problem is never reached.
+</p>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>Received</th><th>Provider</th><th>Event</th><th>Signature</th>
+      <th>Result</th><th class="num">Amount</th><th>Reference</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for e in page.items %}
+      <tr>
+        <td class="muted nowrap">{{ e.received_at | ago }}</td>
+        <td>{{ e.provider }}</td>
+        <td class="muted"><code>{{ e.provider_event_id | truncate_text(22) }}</code>
+          {% if e.event_type %}<div class="muted">{{ e.event_type }}</div>{% endif %}
+        </td>
+        <td>{{ chip('verified', 'ok') if e.signature_verified else chip('unverified', 'bad') }}</td>
+        <td>{{ status_chip(e.processing_result) }}</td>
+        <td class="num">{{ e.amount | inr }}</td>
+        <td class="muted"><code>{{ e.reference or '—' }}</code></td>
+        <td class="muted">
+          {{ e.mismatch_detail | truncate_text(52) }}
+          {% if e.invoice_id %}
+            <div><a href="/admin/invoices/{{ e.invoice_id }}">Invoice</a></div>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">
+        Nothing waiting. Every event matched an outstanding request on amount,
+        currency and reference.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>{% endif %}
+    {% if page.has_next %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if recent %}
+<div class="card">
+  <h2>Recently processed</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Received</th><th>Provider</th><th class="num">Amount</th>
+      <th>Reference</th><th>Invoice</th></tr></thead>
+    <tbody>
+      {% for e in recent %}
+      <tr>
+        <td class="muted nowrap">{{ e.received_at | ago }}</td>
+        <td>{{ e.provider }}</td>
+        <td class="num">{{ e.amount | inr }}</td>
+        <td class="muted"><code>{{ e.reference or '—' }}</code></td>
+        <td>{% if e.invoice_id %}<a href="/admin/invoices/{{ e.invoice_id }}">View</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="pager">
+    🔴 A payment is created only when the signature verifies, the event is
+    fresh, and amount, currency and reference all match an outstanding request.
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

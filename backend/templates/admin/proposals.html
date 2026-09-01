@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+{% block title %}Copilot proposals{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Copilot proposals</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} recorded</span>
+</header>
+<p class="lede">
+  Every proposal, including the refused ones — and the refusals are the point.
+  A proposal that failed with <code>refused: issue an invoice</code> is the
+  trust boundary working, and a refusal nobody counts is a refusal nobody can
+  prove kept happening.
+</p>
+
+<div class="grid">
+  {% for s in ['pending', 'confirmed', 'applied', 'rejected', 'expired', 'failed'] %}
+  <div class="stat">
+    <div class="n">{{ by_status.get(s, 0) }}</div>
+    <div class="k">{{ s | title }}</div>
+  </div>
+  {% endfor %}
+  <div class="stat"><div class="n">{{ refusals }}</div><div class="k">🔴 Unsafe requests refused</div></div>
+</div>
+
+<div class="card">
+  <div class="body">
+    <form class="filters" method="get">
+      <div class="field">
+        <label for="proposal_status">Status</label>
+        <select id="proposal_status" name="proposal_status">
+          <option value="">Any status</option>
+          {% for s in ['pending','confirmed','applied','rejected','expired','failed'] %}
+          <option value="{{ s }}" {{ 'selected' if filters.proposal_status == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><button type="submit">Filter</button></div>
+      <div class="field"><a class="btn ghost" href="/admin/proposals/">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>Action</th><th>Status</th><th>Invoice</th><th>Model</th>
+      <th class="num">Confidence</th><th>Missing</th><th>Created</th><th>Confirmed</th></tr></thead>
+    <tbody>
+      {% for p in page.items %}
+      <tr>
+        <td><code>{{ p.action }}</code></td>
+        <td>{{ status_chip(p.status) }}
+          {% if p.error %}<div class="muted">{{ p.error | truncate_text(44) }}</div>{% endif %}
+        </td>
+        <td>{% if p.invoice_id %}<a href="/admin/invoices/{{ p.invoice_id }}">View</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="muted">{{ p.model or '—' }}
+          {% if p.prompt_version %}<div class="muted">{{ p.prompt_version }}</div>{% endif %}
+        </td>
+        <td class="num">{{ confidence_chip(p.confidence) }}</td>
+        <td class="muted">{{ p.missing_fields | join(', ') or '—' }}</td>
+        <td class="muted nowrap">{{ p.created_at | ago }}</td>
+        <td class="muted nowrap">{{ p.confirmed_at | when if p.confirmed_at else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No proposals yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>{% endif %}
+    {% if page.has_next %}<a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="body">
+    <p class="muted" style="margin:0">
+      🔴 <code>crm.ai_proposal_action</code> has four members —
+      <code>create_draft</code>, <code>update_draft</code>,
+      <code>suggest_organisation_update</code> and <code>explain_total</code> —
+      and none of them is issue, cancel, record_payment or send. An action the
+      copilot cannot name is an action it cannot request, and adding one is a
+      schema change a person makes on purpose. Confirmation binds to a hash of
+      the exact proposal; a draft edited underneath invalidates it.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

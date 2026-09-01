@@ -26,24 +26,51 @@ compiling against an API that no longer exists.
 
 ## The design rule
 
-**Colour means data quality and nothing else.** Chrome — surfaces, borders,
-text, buttons — is neutral throughout. The only saturated colours in the
-application are the four quality tiers from Doc 07 §2: gold, silver, bronze,
-quarantine. If something on screen is coloured, it is telling you how much to
-trust what you are reading.
+**Four colour families, four jobs.** A colour that does not belong to one of
+them does not belong.
 
-This is why the primary button is ink rather than a brand colour, and why the
-focus ring is a blue no tier uses.
+| Family | Job | Where |
+|---|---|---|
+| Brand green | Affordance — things you can *do* | Rail, primary buttons, links, active states |
+| Warm earth | Every surface and every letter | Canvas, cards, borders, all text |
+| Quality tiers | Status — things you can *trust* | Tier chips, meters, tier-keyed strokes |
+| Copper | The lockup, and nothing else | The theta mark and the AgriCRM wordmark |
 
-See `/design` in the running app for the full reference.
+The separation is the point: green is never a data signal and a tier ink is
+never a control, so staff never have to ask which of the two a colour means.
+Focus stays blue and is the only blue left, so a focus ring cannot be misread
+as either. Copper sits next to bronze in hue, which is safe only because the
+two never share a surface — keep it off chips, meters, strokes and buttons.
+
+Light theme only, deliberately. Data-ops staff read grids for whole shifts;
+one well-tuned surface beats two adequate ones.
+
+See `/design` in the running app for the full reference, and the long-form
+reasoning in `tailwind.config.js`.
+
+## The signed-out screens
+
+`/login` and `/mfa` share `layout/AuthLayout.tsx`: a photograph on the left
+with the product's claim over it, the form on paper to the right.
+
+- The photograph is a **CSS background on a `hidden lg:flex` element**, not an
+  `<img>`. A hidden element never fetches its background, so an agent signing
+  in on a phone does not pay ~120KB for a picture they will not see. An `<img>`
+  inside a hidden container downloads anyway.
+- Both scrims are load-bearing, not decoration. A photograph is not a contrast
+  guarantee; the gradients are what turn it into one. Numbers are in the
+  component.
+- `components/botanical.tsx` is the **only decoration in the product**, and it
+  stops at the sign-in boundary. Past here every surface is a grid over a
+  hundred thousand rows and there is no such thing as a decorative pixel.
 
 ## Layout
 
 ```
 src/
 ├── api/         client (auth, refresh), generated types, queries
-├── components/  QualityTier, FreshnessMeter, MaskedValue
-├── layout/      AppShell, PageHeader
+├── components/  Brand, botanical, QualityTier, FreshnessMeter, MaskedValue
+├── layout/      AppShell + PageHeader, AuthLayout (the signed-out halves)
 ├── lib/         quality.ts — tiers, completeness, the decay function
 └── pages/       Login, Mfa, Overview, Account, DesignSystem
 ```

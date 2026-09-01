@@ -1,0 +1,36 @@
+# Packages the FastAPI code from the flat `backend/` directory.
+#
+# Run commands from the repository root with `backend.main:app`.
+#
+# Install once:  pip install -e .
+
+[project]
+name = "agricrm-api"
+version = "1.0.0"
+description = "AgriCRM API — FastAPI service"
+requires-python = ">=3.13"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# 🔴 Every subpackage listed. `backend.domain`, `backend.admin`,
+# `backend.providers` and `backend.collectors` must all ship —
+# it resolves through the source tree, so the omission only surfaces in a real
+# build, i.e. in a deployment. `backend.domain` in particular holds the compliance
+# controls (`pii`, `scoping`, `redaction`), so the failure mode was an image
+# that cannot import its own guardrails.
+packages = [
+    "backend",
+    "backend.admin",
+    "backend.collectors",
+    "backend.domain",
+    "backend.models",
+    "backend.providers",
+    "backend.routers",
+    "backend.schemas",
+]
+
+[tool.setuptools.package-data]
+backend = ["templates/*.html"]

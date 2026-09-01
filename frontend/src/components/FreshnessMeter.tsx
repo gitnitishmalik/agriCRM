@@ -23,7 +23,7 @@ import {
   type FieldClass,
   type Tier,
 } from '../lib/quality'
-import { TIER_TEXT, TIER_STROKE } from './QualityTier'
+import { TIER_TEXT, TIER_STROKE } from '../lib/tierColours'
 
 interface Props {
   tier: Tier

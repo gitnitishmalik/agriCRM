@@ -226,7 +226,7 @@ Ship a **template XLSX** per entity type with the expected columns, an example r
 | Sprint | Deliverable |
 |---|---|
 | 1 | `ref` geography loaded from LGD (this must be first — everything joins to it) |
-| 2 | `core.organisation` + three type profiles, Django admin usable, manual CRUD |
+| 2 | `core.organisation` + three type profiles, data-ops console usable, manual CRUD |
 | 3 | People, roles, contact points; masking; primary-contact rules |
 | 4 | Bulk import: mapping UI, dry run, error file, commit |
 | 5 | Collectors: `lgd_sync`, `mca_master`, `sfac_fpo` |
@@ -236,4 +236,4 @@ Ship a **template XLSX** per entity type with the expected columns, an example r
 | 9 | Map view, command-area layer |
 | 10 | Quality tiers, completeness scoring, DQ tab |
 
-Ten sprints ≈ 20 weeks with one full-time engineer, or 10–12 weeks with two. Django Admin makes sprints 2–6 usable by your data-ops team **before** the React UI exists — start loading real data in week 4, not week 20.
+Ten sprints ≈ 20 weeks with one full-time engineer, or 10–12 weeks with two. The server-rendered `/admin` console makes sprints 2–6 usable by your data-ops team **before** the React UI exists — start loading real data in week 4, not week 20.

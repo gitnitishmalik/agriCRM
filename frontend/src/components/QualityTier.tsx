@@ -1,27 +1,14 @@
 /**
- * Quality tier chip and its colour mapping.
+ * Quality tier chip and completeness bar.
  *
- * These four inks appear on tier chips, freshness meters and tier-keyed
- * strokes, and nowhere else. The brand green next to them is chrome — it says
- * "you can act on this" — so the only thing a tier colour ever says is how
- * much to trust the data it sits on.
+ * The four tier inks appear on chips, freshness meters and tier-keyed strokes,
+ * and nowhere else. The brand green next to them is chrome — it says "you can
+ * act on this" — so the only thing a tier colour ever says is how much to
+ * trust the data it sits on. The shared half of that vocabulary lives in
+ * `lib/tierColours.ts`; the chip background is only used here.
  */
 
 import { TIER_META, type Tier } from '../lib/quality'
-
-export const TIER_TEXT: Record<Tier, string> = {
-  gold: 'text-gold',
-  silver: 'text-silver',
-  bronze: 'text-bronze',
-  quarantine: 'text-quarantine',
-}
-
-export const TIER_STROKE: Record<Tier, string> = {
-  gold: 'stroke-gold',
-  silver: 'stroke-silver',
-  bronze: 'stroke-bronze',
-  quarantine: 'stroke-quarantine',
-}
 
 const CHIP: Record<Tier, string> = {
   gold: 'bg-gold-soft text-gold ring-gold-line',

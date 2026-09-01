@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+{% block title %}Tax codes{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Tax-code knowledge</h1>
+  <span class="sub">{{ records | length }} records</span>
+</header>
+<p class="lede">
+  HSN/SAC codes and their rates, valid between two dates. Retrieval is by the
+  <em>invoice's</em> date, never today's — a rate that changed in July does not
+  retroactively apply to a June document.
+</p>
+
+<div class="notice info">
+  🔴 Only an approved record may be presented as verified. An unreviewed
+  suggestion may be shown, clearly labelled — presenting it as a classification
+  would be this codebase making a tax determination, which is outside the
+  boundary this module draws.
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>Code</th><th>Description</th><th class="num">Rate</th>
+      <th>Effective</th><th>Review</th><th>Source</th>
+      {% if may_approve %}<th>Approve</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td><code>{{ r.code }}</code>
+          <div class="muted">{{ r.code_kind }}</div>
+        </td>
+        <td>{{ r.description }}
+          {% if r.keywords %}
+            <div class="muted">{{ r.keywords | join(', ') | truncate_text(56) }}</div>
+          {% endif %}
+        </td>
+        <td class="num">{{ (r.gst_rate_pct ~ '%') if r.gst_rate_pct is not none else '—' }}</td>
+        <td class="nowrap">
+          {{ r.effective_from | when(with_time=False) }}
+          {% if r.effective_to %}
+            <div class="muted">to {{ r.effective_to | when(with_time=False) }}</div>
+          {% elif r.effective_from <= today %}
+            <div class="muted">current</div>
+          {% endif %}
+        </td>
+        <td>{{ status_chip(r.review_status) }}
+          {% if r.reviewer_name %}<div class="muted">{{ r.reviewer_name }}</div>{% endif %}
+          {% if r.reviewed_at %}<div class="muted">{{ r.reviewed_at | when(with_time=False) }}</div>{% endif %}
+        </td>
+        <td class="muted">
+          {{ r.source_title | truncate_text(46) }}
+          {% if r.source_url %}
+            <div><a href="{{ r.source_url }}" target="_blank" rel="noopener noreferrer">source</a></div>
+          {% endif %}
+        </td>
+        {% if may_approve %}
+        <td>
+          {% if r.review_status != 'approved' %}
+          <form method="post" action="/admin/tax-codes/{{ r.id }}/approve">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="field">
+              <input type="text" name="reviewer_name" placeholder="Reviewer's name" required>
+            </div>
+            <button class="btn small" type="submit">Approve</button>
+          </form>
+          {% else %}{{ chip('verified', 'ok') }}{% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">
+        No records. Seed the two SACs this business bills under from
+        <code>POST /api/v1/tax-codes/seed/</code> — they land
+        <code>under_review</code>, never approved.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% if may_approve %}
+  <div class="pager">
+    🔴 An approval needs the reviewer's name, and the database refuses
+    <code>approved</code> without one. “Approved” with nobody's name against it
+    is not a review.
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

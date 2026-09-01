@@ -264,7 +264,7 @@ Weekly  Mon 06:00  decay job — downgrade stale verifications
 
 ## 4. Import performance
 
-For batches over 10,000 rows, the Django ORM row-by-row is too slow. Use:
+For batches over 10,000 rows, ORM row-by-row is too slow. Use:
 
 ```
 1. COPY the normalised CSV into a temporary staging table

@@ -45,9 +45,13 @@ jobs:
           psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
                -f agri-crm-docs/sql/schema.sql
           psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
+               -f agri-crm-docs/sql/schema_invoice_advanced.sql
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
+               -f agri-crm-docs/sql/schema_identity.sql
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 \
                -f agri-crm-docs/sql/seed_reference.sql
 
-      - name: Smoke test (15 assertions)
+      - name: Smoke test (20 assertions)
         env:
           PGPASSWORD: agricrm_ci
         run: |
@@ -56,11 +60,11 @@ jobs:
                      -f agri-crm-docs/sql/smoke_test.sql 2>&1)
           echo "$OUT"
           PASSES=$(printf '%s\n' "$OUT" | grep -c 'PASS' || true)
-          if [ "$PASSES" -ne 15 ]; then
-            echo "::error::Expected 15 assertions, saw $PASSES"
+          if [ "$PASSES" -ne 20 ]; then
+            echo "::error::Expected 20 assertions, saw $PASSES"
             exit 1
           fi
-          echo "Smoke test green — $PASSES/15"
+          echo "Smoke test green — $PASSES/20"
 
   lint:
     name: Lint + format
@@ -106,15 +110,13 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U agricrm -d agricrm"
           --health-interval 5s --health-timeout 5s --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-
     env:
       DATABASE_URL: postgres://agricrm:agricrm_ci@localhost:5432/agricrm
-      REDIS_URL: redis://localhost:6379/0
-      DJANGO_SECRET_KEY: ci-only-not-a-real-secret
-      DJANGO_SETTINGS_MODULE: config.settings.dev
+      TEST_DATABASE_URL: postgres://agricrm:agricrm_ci@localhost:5432/agricrm
+      API_SECRET_KEY: ci-only-not-a-real-secret
+      DEBUG: "false"
+      DEV_NO_AUTH: "false"
+      DEV_NO_MFA: "false"
 
     steps:
       - uses: actions/checkout@v4
@@ -123,25 +125,63 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - run: pip install -r backend/requirements/dev.txt
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
-      # Doc 03 §10: `--check` catches a model change shipped without a migration
-      - name: Missing migrations check
-        working-directory: backend
-        run: python manage.py makemigrations --check --dry-run
-
-      - name: Tests
-        working-directory: backend
-        run: pytest -q --cov --cov-report=term-missing
-
-      # 🔴 Doc 03 §10: >=80% on the two apps where a bug becomes a legal
-      # problem. Enforced per-package, because a high global average can hide
-      # an untested consent path.
-      - name: Coverage gate — communications & dataquality
-        working-directory: backend
+      - name: Apply the schema
+        env:
+          PGPASSWORD: agricrm_ci
         run: |
-          coverage report --include='apps/communications/*' --fail-under=80
-          coverage report --include='apps/dataquality/*' --fail-under=80
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 -f agri-crm-docs/sql/schema.sql
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 -f agri-crm-docs/sql/schema_invoice_advanced.sql
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 -f agri-crm-docs/sql/schema_identity.sql
+          psql -h localhost -U agricrm -d agricrm -v ON_ERROR_STOP=1 -f agri-crm-docs/sql/seed_reference.sql
+
+      - name: API tests
+        run: pytest -q -c backend/pytest.ini backend/tests
+
+  # ---------------------------------------------------------------------------
+  # 🔴 INVOICE.md §12.7 — the AI release gate.
+  #
+  # A separate job from `test` on purpose. When this one goes red the failure
+  # names itself: something in the trust boundary or the golden set regressed,
+  # and that is a different conversation from a broken query. It runs against
+  # the deterministic fake provider, so it needs no key, costs nothing and
+  # cannot be skipped for want of credentials — a safety suite that is skipped
+  # in CI looks like coverage and is not.
+  # ---------------------------------------------------------------------------
+  ai-safety:
+    name: AI safety + evaluation gate
+    runs-on: ubuntu-latest
+    env:
+      COPILOT_PROVIDER: fake
+      GSTIN_LOOKUP_PROVIDER: fake
+      EMAIL_PROVIDER: fake
+      WHATSAPP_PROVIDER: fake
+      API_SECRET_KEY: ci-only-not-a-real-secret
+      DEBUG: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      # The gate itself: the golden set covers every case the spec names, the
+      # release gate fails on a single accepted unsafe request, and every
+      # `_unsafe` fixture is refused by the real guard rather than a stub.
+      - name: Evaluation gate
+        run: pytest -q -c backend/pytest.ini backend/tests/test_evaluation.py
+
+      # 🔴 The structural half. These assert that the copilot *cannot* issue,
+      # that a patch cannot name a money field, and that the console has no
+      # code path to allocate a number — properties of the code rather than of
+      # a model's behaviour, so they hold whatever the provider does.
+      - name: Trust-boundary structure
+        run: |
+          pytest -q -c backend/pytest.ini backend/tests/test_copilot.py             -k "vocabulary or allocate_number or forbidden_field or amount or explanation"
 
   frontend:
     name: Frontend build

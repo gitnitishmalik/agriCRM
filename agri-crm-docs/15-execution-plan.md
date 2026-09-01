@@ -72,7 +72,7 @@ Also in week 1: **pick your first two states.** Almost certainly UP and Maharash
 | Infra | Terraform for staging: VPC (public/private/isolated subnets), RDS, ECS, S3, Secrets Manager, ElastiCache |
 | Database | Postgres 16 + PostGIS + `pg_trgm` + `btree_gist` + `unaccent` · apply `sql/schema.sql` · apply `sql/seed_reference.sql` |
 | Testing | 🔴 `sql/smoke_test.sql` wired into CI and **green** |
-| Backend | Django 5 project, one app per bounded context (empty) · settings split base/dev/staging/prod |
+| Backend | FastAPI project, one router per bounded context (empty) · settings via pydantic-settings from a single `.env` |
 | Auth | JWT (15 min access / 7 day rotating refresh) + TOTP MFA scaffolding |
 | CI/CD | GitHub Actions → ECR → ECS rolling deploy · migrations as a pre-deploy one-off task |
 | Observability | Sentry **with PII scrubbing configured from the first commit**, not retrofitted |
@@ -99,7 +99,7 @@ Also in week 1: **pick your first two states.** Almost certainly UP and Maharash
 | Sprint | Deliverable | Note |
 |---|---|---|
 | 1 | `ref` geography loaded from LGD | 🔴 **First. Everything joins to this.** ~660k villages. |
-| 2 | `core.organisation` + `fpo_profile` / `sugar_mill_profile` / `cooperative_profile`; Django Admin configured with list displays, filters, inlines, bulk actions | Admin quality here determines data-ops velocity for six months |
+| 2 | `core.organisation` + `fpo_profile` / `sugar_mill_profile` / `cooperative_profile`; `/admin` console built out with list views, filters, related detail and bulk actions | Console quality here determines data-ops velocity for six months |
 | 3 | `person`, `person_org_role`, `contact_point`; masking on by default; one-primary-contact rule | |
 | 4 | Bulk import: column mapping UI, dry run, downloadable error XLSX, commit with legal-basis gate | The loop data ops lives in — make it good |
 | 5 | Collectors: `lgd_sync`, `mca_master`, `sfac_fpo` | Base class asserts `source.is_approved` first |
@@ -110,7 +110,7 @@ Plus, across the phase: **duplicate detection at creation time** (trigram + dist
 ### Exit gate
 
 - [ ] 20,000+ FPOs and 500+ mills in `core.organisation`
-- [ ] Data-ops team working in Django Admin **daily** — not a demo, actual use
+- [ ] Data-ops team working in the `/admin` console **daily** — not a demo, actual use
 - [ ] An import committed and then rolled back successfully within the 7-day window
 - [ ] A collector run against an unapproved source **fails loudly and exits non-zero**
 - [ ] Duplicate blocking demonstrably prevents a duplicate on the create form

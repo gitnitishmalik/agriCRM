@@ -41,7 +41,7 @@ A single system with six functional pillars:
 | Layer | Choice | Why |
 |---|---|---|
 | Database | **PostgreSQL 16** + PostGIS + `pg_trgm` | Geospatial cane command areas, fuzzy name matching for dedupe, JSONB for source payloads, partitioning for 10M+ rows. One database instead of four. |
-| Backend | **Django 5 + Django REST Framework** | Admin panel free on day one (huge for a data-heavy CRM), mature ORM, batteries-included auth/permissions/migrations. Python matches your data-science side. |
+| Backend | **FastAPI + SQLAlchemy 2 (async) + Pydantic v2** | One schema definition for validation and the OpenAPI contract the frontend generates from; native async for the long import/export paths; Python matches your data-science side. The data-ops console is purpose-built at `/admin` — it is deliberately read-heavy and cannot issue or cancel an invoice. (Django 5 + DRF was the original choice and shipped Phase 0; see Doc 03 §3 for how each of its advantages resolved.) |
 | Async work | **Celery + Redis** | Scrapers, imports, message sends, exports — all long-running and retryable. |
 | Search | **Postgres FTS → OpenSearch at ~2M records** | Don't buy search infra before you need it. |
 | Frontend | **React 18 + TypeScript + Vite + TanStack Query + shadcn/ui** | Fast, typed, huge component ecosystem, AG Grid for the 100k-row tables you will absolutely have. |
@@ -83,7 +83,7 @@ Doc 05 turns this into a source-by-source catalogue with a legal basis and a col
 
 | Phase | Weeks | Deliverable |
 |---|---|---|
-| 0 · Foundation | 1–3 | Repo, CI, Postgres schema, auth, Django admin |
+| 0 · Foundation | 1–3 | Repo, CI, Postgres schema, auth, data-ops console |
 | 1 · Org Registry | 4–9 | FPO + ACS + Mill registry, people, bulk import, search |
 | 2 · Farmer Core | 10–15 | Farmer master, land, consent ledger, Theta import |
 | 3 · Commercial | 16–22 | Project Registry, BD Tracker, Agent Tracker |

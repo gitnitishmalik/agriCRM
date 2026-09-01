@@ -1,0 +1,171 @@
+{% extends "invoice_base.html" %}
+{# T2 — Theta Enerlytics tax invoice, spraying.
+
+   The Tally-style grid: supplier and buyer stacked down the left, a column of
+   reference fields down the right, then the item table. Several of those
+   reference fields are blank on every real invoice (Delivery Note, Dispatched
+   through, City/Port of Loading) and are kept anyway — they are part of what
+   the document looks like, and a customer's accounts team matches on shape as
+   much as on content.
+
+   T3 (Mizoram survey) extends this file rather than copying it. #}
+
+{% block document %}
+<div class="sheet">
+
+  <div class="doc-title">{% block doc_title %}Tax Invoice{% endblock %}</div>
+
+  <table class="grid">
+    <tr>
+      {# Supplier. Spans the rows the reference fields occupy on the right. #}
+      <td rowspan="{% block supplier_rowspan %}3{% endblock %}" colspan="4">
+        <span class="party-name">{{ entity.legal_name }}</span>
+        {% for line in entity.address_lines %}<span class="party-line">{{ line }}</span>{% endfor %}
+        {% if entity.gstin %}<span class="party-line">GSTIN/UIN: {{ entity.gstin }}</span>{% endif %}
+        <span class="party-line">State Name: {{ entity_state_name }}, Code: {{ entity.state_code }}</span>
+        {% if entity.contact_phone %}<span class="party-line">Contact: {{ entity.contact_phone }}</span>{% endif %}
+      </td>
+      <td colspan="2">
+        <span class="label">Invoice No.</span>
+        <span class="bold">{{ invoice.invoice_no|default("—") }}</span>
+        {% if is_draft %}<br><span class="status-stamp">DRAFT</span>{% endif %}
+        {% if invoice.status == "cancelled" %}<br><span class="status-stamp">CANCELLED</span>{% endif %}
+      </td>
+      <td colspan="2">
+        <span class="label">Dated</span>
+        <span class="bold">{{ invoice.invoice_date|date("d-F-y") }}</span>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Delivery Note</span>{{ invoice.delivery_note|default("") }}</td>
+      <td colspan="2"><span class="label">Mode/Terms of Payment</span>{{ invoice.payment_terms|default("") }}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Reference No. &amp; Date.</span>{{ invoice.work_order_ref|default("") }}</td>
+      <td colspan="2"><span class="label">Other References</span>{{ invoice.letter_ref|default("") }}</td>
+    </tr>
+
+    {% block consignee %}{% endblock %}
+
+    <tr>
+      {# Buyer. Tall, because the address block is the tallest thing here. #}
+      <td rowspan="4" colspan="4">
+        <span class="label">Buyer (Bill to)</span>
+        <span class="party-name">{{ invoice.buyer_name }}</span>
+        {% if invoice.buyer_address %}<span class="party-line">{{ invoice.buyer_address|linebreaksbr }}</span>{% endif %}
+        {% if invoice.buyer_gstin %}<span class="party-line">GSTIN / UIN : {{ invoice.buyer_gstin }}</span>{% endif %}
+        {% if buyer_state_name %}<span class="party-line">State Name: {{ buyer_state_name }}, Code: {{ invoice.buyer_state_code }}</span>{% endif %}
+      </td>
+      <td colspan="2"><span class="label">Dispatch Doc No.</span></td>
+      <td colspan="2"><span class="label">Delivery Note Date</span></td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Dispatched through</span></td>
+      <td colspan="2"><span class="label">Destination</span>{{ invoice.destination|default("") }}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Buyer's Order No.</span>{{ invoice.buyer_order_no|default("") }}</td>
+      <td colspan="2"><span class="label">Date</span>{% if invoice.buyer_order_date %}{{ invoice.buyer_order_date|date("d-M-y") }}{% endif %}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">City/Port of Loading</span></td>
+      <td colspan="2"><span class="label">City/Port of Discharge</span></td>
+    </tr>
+    <tr>
+      <td colspan="8"><span class="label">Terms of Delivery</span></td>
+    </tr>
+  </table>
+
+  <table class="grid items">
+    <thead>
+      <tr>
+        <th style="width:9mm">Sl.No.</th>
+        <th>Particulars</th>
+        <th style="width:18mm">HSN/SAC</th>
+        <th style="width:20mm">Quantity</th>
+        <th style="width:18mm">Rate</th>
+        <th style="width:14mm">per</th>
+        <th style="width:28mm">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td class="centre">{{ line.line_no }}.</td>
+        <td>
+          {{ line.description }}
+          {% if line.location_note %}<br><span class="small">{{ line.location_note }}</span>{% endif %}
+          {% if loop.last and invoice.tax_amount %}
+            {# Tax sits in the particulars column under the last line, as a
+               labelled row rather than a separate table — that is how the
+               originals present it and where a reader looks for it. #}
+            <br><br>{{ tax_label }}
+          {% endif %}
+        </td>
+        <td class="centre">{{ line.hsn_sac|default("") }}</td>
+        <td class="qty">{{ line.quantity_display }}</td>
+        <td class="num">{{ line.rate_display }}</td>
+        <td class="centre">{{ line.unit_display }}</td>
+        <td class="num">
+          {{ line.taxable_display }}
+          {% if loop.last and invoice.tax_amount %}<br><br>{{ tax_display }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="filler"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr class="totals">
+        <td></td>
+        <td class="bold">Total</td>
+        <td></td>
+        <td class="qty">{{ total_quantity_display }}</td>
+        <td></td>
+        <td></td>
+        <td class="num">{{ total_display }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="words">
+    <span class="label">Amount Chargeable (in words)</span>
+    <span class="bold">{{ invoice.amount_in_words }}</span>
+    {% if invoice.data_link_url %}
+      <div class="small" style="margin-top:2mm">
+        Data Link: <a href="{{ invoice.data_link_url }}">{{ invoice.data_link_url }}</a>
+      </div>
+    {% endif %}
+  </div>
+
+  <table class="foot">
+    <tr>
+      <td style="width:52%" class="bank">
+        {% if entity.bank_name %}
+          <div class="bold small" style="margin-bottom:1mm">Company's Bank Details</div>
+          <dl>
+            <dt>Bank Name:</dt><dd>{{ entity.bank_name }}</dd>
+            {% if entity.bank_account_no %}<dt>A/c No:</dt><dd>{{ entity.bank_account_no }}</dd>{% endif %}
+            {% if entity.bank_ifsc %}<dt>IFSC Code:</dt><dd>{{ entity.bank_ifsc }}</dd>{% endif %}
+            {% if entity.bank_branch %}<dt>Branch:</dt><dd>{{ entity.bank_branch }}</dd>{% endif %}
+          </dl>
+        {% endif %}
+        {% if entity.declaration %}
+          <div class="tiny" style="margin-top:2mm">
+            <span class="bold">Declaration</span><br>{{ entity.declaration }}
+          </div>
+        {% endif %}
+      </td>
+      <td class="sign">
+        <div class="for">for {{ entity.legal_name }}</div>
+        <div class="line">
+          {% if entity.signatory_name %}{{ entity.signatory_name }}{% if entity.signatory_title %}, {{ entity.signatory_title }}{% endif %}
+          {% else %}{{ entity.signatory_title|default("Authorised Signatory") }}{% endif %}
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  {% if entity.jurisdiction_note %}
+    <div class="jurisdiction">{{ entity.jurisdiction_note }}</div>
+  {% endif %}
+  <div class="computer-generated">This is a Computer-Generated Invoice</div>
+</div>
+{% endblock %}

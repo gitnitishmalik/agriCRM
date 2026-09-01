@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+{% block title %}Organisations{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Organisations</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} matching</span>
+</header>
+<p class="lede">
+  The registry, filterable by the source that produced it. That last filter is
+  the point of this page: “show me every organisation whose current values came
+  from the SFAC list” is the question you ask when a parser turns out to have
+  been wrong for a month.
+</p>
+
+<div class="card">
+  <div class="body">
+    <form class="filters" method="get">
+      <div class="field" style="min-width:240px">
+        <label for="q">Search</label>
+        <input id="q" name="q" type="text" value="{{ filters.q }}"
+               placeholder="Name, CIN or GSTIN">
+      </div>
+      <div class="field">
+        <label for="source">Collected from</label>
+        <select id="source" name="source">
+          <option value="">Any source</option>
+          {% for s in sources %}
+          <option value="{{ s.code }}" {{ 'selected' if filters.source == s.code }}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="tier">Quality tier</label>
+        <select id="tier" name="tier">
+          <option value="">Any tier</option>
+          {% for t in ['gold', 'silver', 'bronze', 'quarantine'] %}
+          <option value="{{ t }}" {{ 'selected' if filters.tier == t }}>{{ t | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="state">State</label>
+        <select id="state" name="state">
+          <option value="">Any state</option>
+          {% for s in states %}
+          <option value="{{ s.id }}" {{ 'selected' if filters.state == s.id }}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><button type="submit">Filter</button></div>
+      <div class="field"><a class="btn ghost" href="/admin/organisations/">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Type</th><th>CIN</th><th>GSTIN</th>
+        <th>Tier</th><th>Collected from</th><th>Last seen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for org in page.items %}
+      <tr>
+        <td><a href="/admin/organisations/{{ org.id }}">{{ org.name }}</a></td>
+        <td class="muted nowrap">{{ org.type.replace('_', ' ') }}</td>
+        <td><code>{{ org.cin or '—' }}</code></td>
+        <td><code>{{ org.gstin | mask_gstin }}</code></td>
+        <td>{{ status_chip(org.quality_tier) }}</td>
+        <td class="nowrap">
+          {% for code, collected in origins.get(org.id, []) %}
+            <span class="chip mute">{{ code }}</span>
+          {% else %}
+            <span class="muted">manual entry</span>
+          {% endfor %}
+        </td>
+        <td class="muted nowrap">
+          {% set seen = origins.get(org.id, []) %}
+          {{ (seen | map(attribute=1) | max) | ago if seen else '—' }}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">
+        Nothing matches. {% if filters.source %}No organisation's current values
+        came from that source — the collector may not have run, or its writes
+        were all contradictions.{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>
+    {% endif %}
+    {% if page.has_next %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

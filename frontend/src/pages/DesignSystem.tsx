@@ -10,6 +10,7 @@
  */
 
 import { PageHeader } from '../layout/AppShell'
+import { BrandLockup } from '../components/Brand'
 import { CompletenessBar, QualityTierChip } from '../components/QualityTier'
 import { FreshnessMeter } from '../components/FreshnessMeter'
 import { MaskedValue } from '../components/MaskedValue'
@@ -204,9 +205,9 @@ export function DesignSystemPage() {
         {/* -- Palette --------------------------------------------------- */}
         <Section
           title="Palette"
-          note="Three families, three jobs. If a colour you are adding does not belong to one of them, it does not belong."
+          note="Four families, four jobs. If a colour you are adding does not belong to one of them, it does not belong."
         >
-          <div className="grid gap-3 lg:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
             <Swatches
               title="Green — chrome and identity"
               gloss="The rail, primary buttons, links, the mark. This is the crop: growing, cultivated, alive. It never encodes data — a green thing is a thing you can click, not a thing you can trust."
@@ -243,6 +244,21 @@ export function DesignSystemPage() {
                 ['focus', 'bg-focus'],
               ]}
             />
+            <Swatches
+              title="Copper — the lockup, and nothing else"
+              gloss="The theta mark and the AgriCRM wordmark. Never a chip, a meter, a stroke or a button. It sits next to bronze in hue, which is only safe because the two never share a surface and a bronze chip always carries its own label."
+              swatches={[
+                ['copper', 'bg-copper'],
+                ['copper-light', 'bg-copper-light'],
+              ]}
+            >
+              <div className="mt-4 flex items-center justify-between gap-4 rounded-card border border-line px-3 py-3">
+                <BrandLockup layout="inline" size="sm" />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-4 rounded-card bg-rail px-3 py-3">
+                <BrandLockup on="dark" layout="inline" size="sm" />
+              </div>
+            </Swatches>
           </div>
 
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-ink-2">
@@ -267,10 +283,12 @@ function Swatches({
   title,
   gloss,
   swatches,
+  children,
 }: {
   title: string
   gloss: string
   swatches: [string, string][]
+  children?: React.ReactNode
 }) {
   return (
     <div className="card p-5">
@@ -284,6 +302,7 @@ function Swatches({
           </div>
         ))}
       </div>
+      {children}
     </div>
   )
 }

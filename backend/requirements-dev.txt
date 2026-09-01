@@ -1,0 +1,31 @@
+-r requirements.txt
+
+pytest>=8.3,<10
+pytest-asyncio>=0.25,<2
+httpx>=0.28,<1
+PyYAML>=6,<7
+
+# 🔴 Pinned exactly, because CI pins exactly (`ruff==0.16.4` in ci.yml). A
+# range here means the formatter locally and the formatter in CI can be
+# different versions, and ruff's formatter output changes between releases —
+# which surfaces as `ruff format --check` failing in CI on code that was just
+# formatted locally. Bump both together or not at all.
+ruff==0.16.4
+
+# 🔴 Tooling only — NOT the runtime, which talks to Postgres over asyncpg.
+# `scripts/pgrun.py` uses psycopg to run schema.sql, the migrations and the
+# smoke test when `psql` is not on PATH and the database is hosted rather than
+# in the local container. That is the normal case on Windows.
+#
+# It used to arrive via the Django requirements (`psycopg[binary]`). Retiring
+# Django took it with it, and the symptom was `make smoke` failing with
+# "psycopg is not installed" while every test still passed — the scripts and
+# the service reach Postgres through two different drivers, so the test suite
+# cannot catch this one.
+psycopg[binary]>=3.2,<4
+
+# 🔴 The repo installs a git pre-commit hook (`.pre-commit-config.yaml`) whose
+# gitleaks pass Doc 12 §6 calls non-optional. It was not in any requirements
+# file, so a fresh venv produced `pre-commit not found` on every commit — and
+# the only way past that is `--no-verify`, which is the secret scan turned off.
+pre-commit>=4,<5

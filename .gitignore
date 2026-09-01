@@ -19,6 +19,7 @@ media/
 node_modules/
 dist/
 .vite/
+.pnpm-store/
 
 # Env — 🔴 never commit a real .env. Secrets live in AWS Secrets Manager.
 .env
@@ -31,6 +32,12 @@ dist/
 .terraform/
 *.tfvars
 !*.tfvars.example
+
+# 🔴 Local object storage. Uploaded invoices, rendered PDFs and raw webhook
+# bodies land here under the `local` storage backend — real customer documents
+# with real GSTINs and real amounts. R11 forbids production PII in the repo,
+# and an uploaded invoice is exactly that.
+var/
 
 # Data — 🔴 R11: no production PII in the repo, ever. Not "just for a test".
 *.csv

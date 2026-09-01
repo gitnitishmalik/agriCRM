@@ -45,6 +45,23 @@
 }
 
 @layer components {
+  /* The sign-in photograph. Declared here rather than inline because
+     `image-set()` is the only way to serve WebP with a JPEG fallback from a
+     background, and it is unreadable as a Tailwind arbitrary value.
+
+     Its element is `display:none` below the `lg` breakpoint, which is what
+     stops a phone from fetching it at all — the whole reason this is a
+     background and not an `<img>`. The flat colour underneath is the
+     photograph's own soil, so a slow connection shows the right dark rather
+     than a white flash before the picture lands. */
+  .hero-field {
+    background-color: #241a12;
+    background-image: image-set(
+      url('/hero-field.webp') type('image/webp'),
+      url('/hero-field.jpg') type('image/jpeg')
+    );
+  }
+
   .label {
     @apply text-xs font-medium uppercase tracking-wide text-ink-3;
   }

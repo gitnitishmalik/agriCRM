@@ -1,0 +1,104 @@
+{% extends "admin/base.html" %}
+{% block title %}Source register{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Source register</h1>
+  <span class="sub">dq.source · 🔴 R1 and R4</span>
+</header>
+<p class="lede">
+  This table is not documentation about the collection rules — it <em>is</em>
+  the rule. A collector asserts <code>is_approved</code> before its first
+  request and exits non-zero if it is false; <code>base.Collector</code>
+  refuses to start against a source whose row says <code>contains_pii</code>.
+  Changing a row here changes what the collectors are permitted to do.
+</p>
+
+<div class="notice info">
+  🔴 The SFAC PDFs contain a CEO block — name, mobile, personal email — and the
+  collector does not read it. The register row for <code>sfac_fpo_list</code>
+  says “organisational data only”, and taking the block would make that row
+  false. Changing it is a decision for a named person with legal advice,
+  recorded by editing the row.
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead>
+      <tr>
+        <th>Code</th><th>Name</th><th>Kind</th><th>Approved</th><th>PII</th>
+        <th class="num">Current values</th><th>Last collected</th><th>Licence</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sources %}
+      <tr>
+        <td><code>{{ s.code }}</code></td>
+        <td>
+          {{ s.name }}
+          {% if s.url %}
+          <div class="muted">
+            <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">
+              {{ s.url | truncate_text(52) }}</a>
+          </div>
+          {% endif %}
+        </td>
+        <td class="muted nowrap">{{ s.kind.replace('_', ' ') }}</td>
+        <td class="nowrap">
+          {% if s.is_approved %}
+            {{ chip('approved', 'ok') }}
+            {% if s.approved_by %}<div class="muted">{{ s.approved_by }}</div>{% endif %}
+            {% if s.approved_at %}<div class="muted">{{ s.approved_at | when(with_time=False) }}</div>{% endif %}
+          {% else %}
+            {{ chip('not approved', 'bad') }}
+            <div class="muted">A collector against this exits non-zero.</div>
+          {% endif %}
+        </td>
+        <td>{{ chip('contains PII', 'bad') if s.contains_pii else chip('no PII', 'ok') }}</td>
+        <td class="num">
+          {% set count = counts.get(s.id, 0) %}
+          {% if count %}
+            <a href="/admin/provenance/?source={{ s.code }}">{{ "{:,}".format(count) }}</a>
+          {% else %}<span class="muted">0</span>{% endif %}
+        </td>
+        <td class="muted nowrap">{{ last_seen.get(s.id) | ago }}</td>
+        <td class="muted">{{ s.licence | truncate_text(28) }}</td>
+      </tr>
+      <tr>
+        <td></td>
+        <td colspan="7" class="muted" style="border-bottom:2px solid var(--line)">
+          <strong>Legal basis:</strong> {{ s.legal_basis or '🔴 none recorded' }}
+          {% if s.refresh_cadence %} · <strong>Refresh:</strong> {{ s.refresh_cadence }}{% endif %}
+          {% if s.notes %}<div>{{ s.notes }}</div>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">
+        No sources registered. Every collector needs a row here before it can run.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>What the approved sources are for</h2>
+  <div class="body">
+    <p class="muted" style="margin-top:0">
+      Doc 05 settles the scraping question. Institutional data is fair game —
+      MCA director names and DINs published by statute, SFAC/NABARD lists,
+      ISMA/NFCSF directories. Aggregate data is fair game and gives targeting
+      without holding one unconsented number. Volume comes from partnership
+      ingestion: one FPO MoU with a consent clause is roughly 1,200 clean
+      records.
+    </p>
+    <p class="muted" style="margin-bottom:0">
+      🔴 Personal data enters only via <code>partner_agreement</code>,
+      <code>field_collection</code>, <code>inbound_signup</code>, or an approved
+      <code>theta_analytics</code> / <code>purchased_licensed</code> batch (R4).
+      A scraped list of a million is worth less than a consented list of fifty
+      thousand.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

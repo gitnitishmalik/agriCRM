@@ -1,0 +1,120 @@
+{% extends "admin/base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+
+<header class="page"><h1>Invoice register</h1>
+  <span class="sub">{{ "{:,}".format(page.total) }} matching</span>
+</header>
+<p class="lede">
+  Read-only here. Issuing, cancelling and recording a payment live on the API
+  behind their confirmation flows — a console button that skipped the pre-issue
+  checks would be the one somebody reaches for under pressure.
+</p>
+
+<div class="card">
+  <div class="body">
+    <form class="filters" method="get">
+      <div class="field" style="min-width:230px">
+        <label for="q">Search</label>
+        <input id="q" name="q" type="text" value="{{ filters.q }}"
+               placeholder="Number, customer or GSTIN">
+      </div>
+      <div class="field">
+        <label for="invoice_status">Status</label>
+        <select id="invoice_status" name="invoice_status">
+          <option value="">Any status</option>
+          {% for s in ['draft','issued','part_paid','paid','on_hold','cancelled','discarded'] %}
+          <option value="{{ s }}" {{ 'selected' if filters.invoice_status == s }}>{{ s.replace('_',' ') }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="entity">Entity</label>
+        <select id="entity" name="entity">
+          <option value="">Both</option>
+          {% for code in entities %}
+          <option value="{{ code }}" {{ 'selected' if filters.entity == code }}>{{ code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="fy">Financial year</label>
+        <select id="fy" name="fy">
+          <option value="">Any FY</option>
+          {% for y in financial_years %}
+          <option value="{{ y }}" {{ 'selected' if filters.fy == y }}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><button type="submit">Filter</button></div>
+      <div class="field"><a class="btn ghost" href="/admin/invoices/">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead>
+      <tr>
+        <th>Number</th><th>Date</th><th>Entity</th><th>Customer</th><th>Status</th>
+        <th class="num">Taxable</th><th class="num">Tax</th><th class="num">Total</th>
+        <th class="num">Outstanding</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in page.items %}
+      <tr>
+        <td class="nowrap">
+          <a href="/admin/invoices/{{ inv.id }}">{{ inv.invoice_no or '— draft —' }}</a>
+        </td>
+        <td class="nowrap">{{ inv.invoice_date | when(with_time=False) }}</td>
+        <td class="muted">{{ inv.entity_code }}</td>
+        <td>{{ inv.buyer_name | truncate_text(34) }}</td>
+        <td>{{ status_chip(inv.status) }}</td>
+        <td class="num">{{ inv.taxable_value | inr }}</td>
+        <td class="num">{{ inv.tax_amount | inr }}</td>
+        <td class="num">{{ inv.total_value | inr }}</td>
+        <td class="num">{{ inv.amount_outstanding | inr }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="empty">No invoices match.</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if page.items %}
+    <tfoot>
+      <tr style="font-weight:600; background:#fbfcfb">
+        <td colspan="5">Totals across all {{ "{:,}".format(page.total) }} matching</td>
+        <td class="num">{{ sums.taxable | inr }}</td>
+        <td class="num">{{ sums.tax | inr }}</td>
+        <td class="num">{{ sums.total | inr }}</td>
+        <td class="num"></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table></div>
+
+  {% if page.pages > 1 %}
+  <div class="pager">
+    <span>{{ page.first_index }}–{{ page.last_index }} of {{ "{:,}".format(page.total) }}</span>
+    {% if page.has_prev %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page - 1) }}">Previous</a>
+    {% endif %}
+    {% if page.has_next %}
+      <a class="btn ghost small" href="?{{ query_string(params, page=page.page + 1) }}">Next</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="body">
+    <a class="btn ghost" href="/api/v1/exports/tally.csv">Tally export</a>
+    <a class="btn ghost" href="/api/v1/exports/zoho.csv">Zoho export</a>
+    <span class="muted" style="margin-left:8px">
+      Exports for your accountant, not filings. Nothing in this system files a
+      return, obtains an IRN or posts to a ledger.
+    </span>
+  </div>
+</div>
+
+{% endblock %}

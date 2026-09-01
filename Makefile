@@ -1,12 +1,12 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
-PY := backend/.venv/Scripts/python.exe
+PY := .venv/Scripts/python.exe
 ifeq ($(wildcard $(PY)),)
-PY := backend/.venv/bin/python
+PY := .venv/bin/python
 endif
 
-.PHONY: help bootstrap up down logs db-apply db-reset smoke migrate superuser \
-        run worker beat test lint fmt check compliance schema-doc clean
+.PHONY: help bootstrap up down logs db-apply db-migrate db-reset smoke migrate superuser \
+        run collector test lint fmt check compliance schema-doc clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -18,14 +18,15 @@ bootstrap: ## One-command setup: containers, schema, venv, deps, migrations
 	@until docker compose exec -T db pg_isready -U agricrm -d agricrm >/dev/null 2>&1; \
 	  do printf '.'; sleep 1; done; echo " ready"
 	./scripts/db-apply.sh
-	python -m venv backend/.venv
+	python -m venv .venv
 	$(PY) -m pip install -q --upgrade pip
-	$(PY) -m pip install -q -r backend/requirements/dev.txt
+	$(PY) -m pip install -q -r backend/requirements.txt -r backend/requirements-dev.txt
 	@test -f .env || cp .env.example .env
-	cd backend && ../$(PY) manage.py migrate
 	./scripts/smoke-test.sh
+	$(PY) -m backend.cli seed-billing-entities
 	@echo ""
-	@echo "Ready. 'make run' to start the API, 'make superuser' for admin access."
+	@echo "Ready. 'make run' starts the API on :8001; the console is at /admin."
+	@echo "'make superuser' creates an account, or 'make seed-dev-users' in dev."
 
 up: ## Start postgres + redis
 	docker compose up -d
@@ -36,32 +37,38 @@ down: ## Stop containers (data survives in the volume)
 logs: ## Tail container logs
 	docker compose logs -f
 
-db-apply: ## Apply schema.sql + seed_reference.sql
+db-apply: ## Apply schema.sql + additions + seed_reference.sql (empty database)
 	./scripts/db-apply.sh
 
-db-reset: ## 🔴 DROP every business schema and re-apply. Dev only.
-	./scripts/db-reset.sh
+db-migrate: ## Apply only the idempotent additions (safe on a live database)
+	./scripts/db-migrate.sh
 
-smoke: ## Run the 15-assertion behavioural suite
+db-reset: ## 🔴 DROP every business schema and re-apply. Dev only.
+	./scripts/db-reset.sh --yes
+
+smoke: ## Run the 20-assertion behavioural suite
 	./scripts/smoke-test.sh
 
-migrate: ## Apply Django migrations
-	cd backend && ../$(PY) manage.py migrate
+migrate: ## Apply reviewed SQL additions (no ORM migrations)
+	./scripts/db-migrate.sh
 
 superuser: ## Create an admin user
-	cd backend && ../$(PY) manage.py createsuperuser
+	$(PY) -m backend.cli create-admin --email "$$ADMIN_EMAIL" --name "$$ADMIN_NAME"
 
-run: ## Start the API on :8000 (Django Admin at /admin/)
-	cd backend && ../$(PY) manage.py runserver 0.0.0.0:8000
+seed-entities: ## Create or refresh TFD and TEPL from the real invoices
+	$(PY) -m backend.cli seed-billing-entities
 
-worker: ## Start a Celery worker
-	cd backend && ../$(PY) -m celery -A config worker -l info -Q default,import,heavy,messaging
+seed-dev-users: ## Development roster (refuses unless DEBUG is on)
+	$(PY) -m backend.cli seed-dev-users
 
-beat: ## Start Celery Beat — 🔴 exactly one instance, ever
-	cd backend && ../$(PY) -m celery -A config beat -l info
+run: ## Start FastAPI on :8001
+	$(PY) -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8001
+
+collector: ## Run the approved SFAC collector (ARGS="--dry-run --limit 5")
+	$(PY) -m backend.collectors.run sfac $(ARGS)
 
 test: ## Run the backend test suite
-	cd backend && ../$(PY) -m pytest -q
+	$(PY) -m pytest -q -c backend/pytest.ini backend/tests
 
 lint: ## Lint and format-check
 	$(PY) -m ruff check backend/
@@ -77,9 +84,9 @@ compliance: ## Run the compliance guards CI enforces
 check: lint compliance test smoke ## Everything CI runs, locally
 
 schema-doc: ## Regenerate the OpenAPI schema
-	cd backend && ../$(PY) manage.py spectacular --file ../openapi.yaml
+	$(PY) -c "import yaml; from backend.main import app; open('openapi.yaml','w',encoding='utf-8').write(yaml.safe_dump(app.openapi(),sort_keys=False))"
 	@echo "Wrote openapi.yaml"
 
 clean: ## Remove caches and build artefacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
-	rm -rf backend/.pytest_cache backend/.ruff_cache backend/.mypy_cache backend/.coverage
+	rm -rf .pytest_cache .ruff_cache .coverage

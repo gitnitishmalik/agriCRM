@@ -4,7 +4,9 @@
 
 **Correctness before polish.** The expensive mistakes in this system are structural — a data model that can't express the farmer↔FPO↔mill graph, a consent design that can't prove itself, a partitioning decision deferred past 5M rows. UI polish is cheap to add later; those three are not.
 
-**Django Admin is your Phase 1 UI.** It is genuinely usable for internal data-ops work. Shipping schema + ingestion + admin in ten weeks means real data enters the system in month three, and the React UI in Phase 2 gets designed around screens people have actually used rather than screens you imagined.
+**The server-rendered `/admin` console is your Phase 1 UI.** It is genuinely usable for internal data-ops work. Shipping schema + ingestion + admin in ten weeks means real data enters the system in month three, and the React UI in Phase 2 gets designed around screens people have actually used rather than screens you imagined.
+
+*(Historical note: this was Django Admin through Phase 0, which is what made the ten-week figure achievable. It is now purpose-built over the same domain layer — read-heavy, and deliberately unable to issue or cancel an invoice. See Doc 03 §3.)*
 
 **Every phase ends with something in production.** No six-month integration phase.
 
@@ -17,7 +19,7 @@
 | | |
 |---|---|
 | **Deliverable** | Empty but deployable system |
-| Tasks | Repo, monorepo layout, Docker Compose dev env · Terraform for staging · Postgres 16 + extensions · **`sql/schema.sql` applied and `smoke_test.sql` green in CI** · Django project + apps skeleton · auth with JWT + MFA · CI/CD to staging · Sentry |
+| Tasks | Repo, monorepo layout, Docker Compose dev env · Terraform for staging · Postgres 16 + extensions · **`sql/schema.sql` applied and `smoke_test.sql` green in CI** · FastAPI project + router skeleton · auth with JWT + MFA · CI/CD to staging · Sentry |
 | **Exit criteria** | A migration merged to main deploys to staging automatically; smoke test runs in CI |
 
 ### Phase 1 — Organisation Registry · Weeks 4–9
@@ -25,7 +27,7 @@
 | | |
 |---|---|
 | **Deliverable** | 🔴 **A working FPO/mill/ACS registry with real data in it** |
-| Tasks | `ref` geography loaded from LGD (do this first) · organisation + type profiles · people, roles, contact points with masking · Django Admin configured properly (list displays, filters, inlines, bulk actions) · bulk import: mapping, dry-run, error file, commit with legal-basis gate · collectors: `lgd_sync`, `mca_master`, `sfac_fpo`, `isma_directory`, `nfcsf_directory` · duplicate detection at create |
+| Tasks | `ref` geography loaded from LGD (do this first) · organisation + type profiles · people, roles, contact points with masking · `/admin` console built out (list views, filters, related detail, bulk actions) · bulk import: mapping, dry-run, error file, commit with legal-basis gate · collectors: `lgd_sync`, `mca_master`, `sfac_fpo`, `isma_directory`, `nfcsf_directory` · duplicate detection at create |
 | **Exit criteria** | 20,000+ FPOs and 500+ mills loaded; data-ops team using Admin daily; imports reversible |
 | **Why first** | Institutional data has no consent dependency, so you can move fast and prove the pipeline before the legally sensitive data arrives. It is also what your BD team needs *now*. |
 
@@ -114,7 +116,7 @@ Parallel from week 1:
 | Role | Focus |
 |---|---|
 | You / tech lead | Architecture, schema, code review, the hard problems |
-| Full-stack engineer | Django + React feature work |
+| Full-stack engineer | FastAPI + React feature work |
 | Data ops analyst (from month 3) | Imports, quality, verification — **this hire pays for itself faster than a second engineer** |
 
 Timeline stretches to ~15 months.
@@ -124,7 +126,7 @@ Timeline stretches to ~15 months.
 | Role | Focus |
 |---|---|
 | Tech lead | Architecture, review, integrations |
-| Backend engineer | Django, pipelines, collectors |
+| Backend engineer | FastAPI, pipelines, collectors |
 | Frontend engineer | React, dashboards, grids |
 | Mobile engineer (from month 8) | React Native, sync |
 | Data ops analyst | Quality, imports, verification |
