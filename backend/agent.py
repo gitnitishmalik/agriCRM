@@ -533,7 +533,7 @@ def _extract_anthropic(
 # NVIDIA NIM
 # ---------------------------------------------------------------------------
 #
-# OpenAI-compatible chat completions against integrate.backend.nvidia.com.
+# OpenAI-compatible chat completions against integrate.api.nvidia.com.
 #
 # 🔴 **Read the text layer, do not look at a picture of it.** Your invoices are
 # computer-generated PDFs that carry their own text. Rasterising one to an
@@ -561,7 +561,7 @@ def _extract_anthropic(
 #   exceeds. `_fit_image` downscales until it fits and refuses if it cannot
 #   stay legible.
 
-NVIDIA_BASE_URL = "https://integrate.backend.nvidia.com/v1/chat/completions"
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 #: Below this a PDF's "text" is page furniture, not content — a scan with a
 #: few OCR crumbs on it. Anything shorter goes down the vision path.

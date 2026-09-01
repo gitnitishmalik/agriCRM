@@ -46,18 +46,32 @@ const apiTarget = process.env.VITE_DEV_API ?? 'http://127.0.0.1:8001'
  * be doing, and a dev server that refuses to start would be worse than the
  * problem it reports.
  */
-function warnIfApiIsDown() {
+async function warnIfApiIsDown() {
   const url = `${apiTarget}/api/v1/healthz/`
-  const timeout = AbortSignal.timeout(2500)
 
-  fetch(url, { signal: timeout }).catch(() => {
-    console.warn(
-      `\n  Note: nothing is answering at ${apiTarget}.\n` +
-        '  Every /api request will fail until you start it:\n' +
-        '      python -m backend.run          (or: make run)\n' +
-        '  uvicorn started by hand defaults to port 8000 — pass --port 8001.\n',
-    )
-  })
+  // 🔴 Retried, not probed once. `dev.py` starts both halves together and the
+  // API — which imports SQLAlchemy, every router and the whole domain layer —
+  // is reliably slower to answer than Vite is to boot. A single immediate
+  // probe therefore printed "nothing is answering" every single time it was
+  // launched that way, which is the worst kind of warning: correct-looking,
+  // permanently wrong, and training you to ignore the one that is real.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      await fetch(url, { signal: AbortSignal.timeout(2000) })
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+    }
+  }
+
+  console.warn(
+    `\n  Note: nothing is answering at ${apiTarget}.\n` +
+      '  Every /api request will fail until you start it:\n' +
+      '      python dev.py                 (starts the API and this together)\n' +
+      '      python -m backend.run         (API only, from the repository root)\n' +
+      '      python run.py                 (API only, from inside backend/)\n' +
+      '  uvicorn started by hand defaults to port 8000 — pass --port 8001.\n',
+  )
 }
 
 export default defineConfig(({ command, mode }) => {
@@ -102,8 +116,10 @@ export default defineConfig(({ command, mode }) => {
                 explained = true
                 console.error(
                   `\n  The API is not answering on ${apiTarget}.\n\n` +
-                    '  Start it from the repository root:\n' +
-                    '      python -m backend.run          (or: make run)\n\n' +
+                    '  Start it:\n' +
+                    '      python dev.py            starts the API and this together\n' +
+                    '      python -m backend.run    API only, from the repository root\n' +
+                    '      python run.py            API only, from inside backend/\n\n' +
                     '  If you started uvicorn by hand it defaults to port 8000,\n' +
                     '  which this proxy does not use. Pass --port 8001.\n' +
                     `  To point the UI elsewhere: VITE_DEV_API=http://127.0.0.1:8000\n`,

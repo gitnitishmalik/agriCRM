@@ -29,6 +29,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
+
+# 🔴 Runnable from either directory, like `main.py`.
+#
+#   python -m backend.run     from the repository root
+#   python run.py             from inside backend/
+#
+# The second is what you type when you are already in `backend/`, and without
+# this it fails twice over: `python -m backend.run` cannot even find the module
+# from in here, and once uvicorn does start it imports `backend.main`, which
+# needs the *parent* of `backend/` on the path.
+#
+# Inserting rather than appending, because a `backend` directory on the path
+# ahead of ours would otherwise win.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def main() -> None:

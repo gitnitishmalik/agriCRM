@@ -17,7 +17,7 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 LIST_PAGE = "https://sfacindia.com/List-of-FPO-Statewise.aspx"
-SCRAPFLY_ENDPOINT = "https://backend.scrapfly.io/scrape"
+SCRAPFLY_ENDPOINT = "https://api.scrapfly.io/scrape"
 USER_AGENT = "AgriCRM-Collector/1.0 (Theta Analytics; +mailto:{contact}) python-requests"
 CIN = re.compile(r"U(?:\s*\d){5}(?:\s*[A-Z]){2}(?:\s*\d){4}(?:\s*[A-Z]){3}(?:\s*\d){6}")
 REG_DATE = re.compile(r"\b(\d{1,2})\.([A-Z][a-z]{2})\.(\d{2})\b")

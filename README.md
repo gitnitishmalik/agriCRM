@@ -14,19 +14,32 @@ merely stopped. See [Why FastAPI](#why-fastapi).
 
 ## Quick start
 
-Requires **Docker**, **Python 3.13**, **Node 22+**, and **GNU make** run from
-**Git Bash** on Windows (the Makefile needs a POSIX shell and the
-`scripts/*.sh`; PowerShell and `cmd` will not do). If MinGW gave you
-`mingw32-make` but no `make`, copy it: `cp /c/MinGW/bin/mingw32-make.exe
-/c/MinGW/bin/make.exe`.
+Requires **Docker**, **Python 3.13** and **Node 22+**.
+
+`make` is needed only for the `make` targets — running the app is not one of
+them. On Windows those targets need **Git Bash**, because the Makefile uses a
+POSIX shell and the `scripts/*.sh`; PowerShell and `cmd` will not do. If MinGW
+gave you `mingw32-make` but no `make`, copy it: `cp
+/c/MinGW/bin/mingw32-make.exe /c/MinGW/bin/make.exe`.
 
 ```bash
 make bootstrap     # containers, .env, venv, deps, schema, smoke test, frontend
-make dev           # API on :8001 and the UI on :5173, together
+python dev.py      # API on :8001 and the UI on :5173, together
 ```
 
-`make dev` runs both and stops both on one Ctrl-C. `make run` and
-`make frontend` run them separately if you want two terminals.
+🔴 **`python dev.py` is the one to use**, especially on Windows. It works from
+any directory, needs no `make` and no Git Bash, starts both halves on the ports
+they expect, prefixes their output so you can tell them apart, and stops both
+on one Ctrl-C. `make dev` does the same for anyone already in Git Bash.
+
+If you want the two halves in separate terminals:
+
+| Command | Where | Port |
+|---|---|---|
+| `python -m backend.run` | repository root | 8001 |
+| `python run.py` | inside `backend/` | 8001 |
+| `make run` | repository root, Git Bash | 8001 |
+| `npm run dev` | inside `frontend/` | 5173 |
 
 Then:
 
@@ -87,17 +100,24 @@ refuses to run async on the default ProactorEventLoop. The symptom is nasty:
 the service starts, `/healthz` returns 200, and `/readyz` 500s on the first
 database call.
 
-Both of these work, from either directory:
+All of these work, from the directory shown:
 
 ```bash
-uvicorn backend.main:app --reload --port 8001   # from the repository root
+python dev.py                                    # anywhere — API and UI together
+python -m backend.run                            # repository root
+cd backend && python run.py                      # inside backend/
+uvicorn backend.main:app --reload --port 8001    # repository root
 cd backend && uvicorn main:app --reload --port 8001
 ```
 
-The second used to fail with `ModuleNotFoundError: No module named 'backend'` —
-`main.py` imports `backend.*` absolutely, which needs the *parent* of
-`backend/` on the path. It now puts the repository root there itself when it is
-loaded as a top-level module.
+🔴 **Every one of them serves 8001.** The only way to end up on 8000 is to
+invoke uvicorn by hand and omit `--port`, which is what the proxy error message
+now tells you.
+
+The `backend/` spellings used to fail with `ModuleNotFoundError: No module
+named 'backend'` — both files import `backend.*` absolutely, which needs the
+*parent* of `backend/` on the path. `main.py` and `run.py` now put the
+repository root there themselves when loaded as top-level modules.
 
 ---
 
@@ -106,7 +126,7 @@ loaded as a top-level module.
 ```bash
 make help          # list everything
 make doctor        # check the environment, report what is missing
-make dev           # API and UI together
+make dev           # API and UI together (python dev.py does the same, without make)
 make check         # lint + compliance guards + tests + smoke — what CI runs
 make smoke         # the 20-assertion schema suite
 make db-migrate    # apply the idempotent additions — safe on a live database

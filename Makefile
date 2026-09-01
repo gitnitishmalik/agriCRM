@@ -43,7 +43,8 @@ bootstrap: ## One-command setup: containers, venv, deps, schema, frontend
 	@$(MAKE) --no-print-directory frontend-install
 	@echo ""
 	@echo "Ready."
-	@echo "  make dev             API on :8001 and the UI on :5173, together"
+	@echo "  python dev.py        API on :8001 and the UI on :5173, together"
+	@echo "                       (works from any directory, no make needed)"
 	@echo "  make run             API only; console at http://localhost:8001/admin"
 	@echo "  make seed-dev-users  development logins (refuses unless DEBUG is on)"
 	@echo "  make superuser       create a real admin account"
@@ -98,29 +99,11 @@ frontend: ## Start the Vite dev server on :5173 (proxies /api to :8001)
 	cd frontend && npm run dev
 
 dev: ## Run the API and the UI together; Ctrl-C stops both
-	@echo "API  http://localhost:8001  (docs /api/docs · console /admin)"
-	@echo "UI   http://localhost:5173"
-	@echo ""
-	@# The trap is what makes one Ctrl-C enough. Without it a server survives in
-	@# the background holding its port, and the next 'make dev' fails to bind
-	@# with an error that does not mention the previous run.
-	@#
-	@# 🔴 PIDs explicitly, not `kill 0`. On Git Bash the npm wrapper and the
-	@# node process it spawns are not reliably in this shell's process group,
-	@# so a group kill takes the API down and leaves Vite holding :5173 —
-	@# measured. Killing the recorded PIDs, then anything still on the ports,
-	@# covers both. `|| true` throughout: this runs while shutting down, and a
-	@# failure to kill something already dead must not mask the real exit.
-	@trap 'kill $$API $$UI 2>/dev/null || true; \
-	       sleep 1; \
-	       for port in 8001 5173; do \
-	         pid=$$(netstat -ano 2>/dev/null | grep -E "LISTENING" | grep ":$$port " \
-	                | awk "{print \$$5}" | head -1); \
-	         [ -n "$$pid" ] && taskkill //PID $$pid //F >/dev/null 2>&1; \
-	       done; true' EXIT INT TERM; \
-	  $(PY) -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8001 & API=$$!; \
-	  (cd frontend && npm run dev) & UI=$$!; \
-	  wait
+	@# Delegates to dev.py rather than reimplementing it. One launcher means one
+	@# shutdown path to get right — and the shell version needed a PID trap plus
+	@# a port sweep, because on Git Bash npm's node child is not reliably in
+	@# this shell's process group and survived a group kill holding :5173.
+	@$(PY) dev.py
 
 doctor: ## Check the environment and report what is missing
 	@$(PY) scripts/doctor.py

@@ -133,7 +133,7 @@ class AnthropicCopilotProvider:
 
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
-                "https://backend.anthropic.com/v1/messages",
+                "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": self._api_key,
                     "anthropic-version": "2023-06-01",
