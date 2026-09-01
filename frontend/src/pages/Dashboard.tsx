@@ -17,7 +17,7 @@
  * The build-status panel below survives for the same reason. Until the
  * registry and farmer modules land there is genuinely more to say about where
  * the build has reached than about the data, and Track P is on it because all
- * four workstreams have multi-week external lead times and each one blocks a
+ * four workstreams wait on someone outside the team and each one blocks a
  * later phase.
  */
 
@@ -49,22 +49,40 @@ const InvoiceTrendChart = lazy(() => import('../components/InvoiceTrendChart'))
 // Build status. Unchanged in substance from the page this replaces.
 // ---------------------------------------------------------------------------
 
+// Track P is the work that cannot be compressed by engineering effort, which
+// is why it starts immediately and never blocks on a phase. The column says
+// *who* the wait belongs to rather than how long it runs: a duration here
+// would be a guess about someone else's queue, and a guess printed on a
+// dashboard is read as a commitment.
 const TRACK_P = [
-  { code: 'P1', name: 'Data protection lawyer', leadTime: '3–6 weeks', blocks: 'Phase 2 exit, Phase 4 launch' },
-  { code: 'P2', name: 'Theta legacy data audit', leadTime: '4–8 weeks', blocks: 'Phase 2 import' },
-  { code: 'P3', name: 'Meta business verification', leadTime: '1–3 weeks', blocks: 'Phase 4 entirely' },
-  { code: 'P4', name: 'BD partnership outreach', leadTime: 'Continuous', blocks: 'Phase 2 data volume' },
+  { code: 'P1', name: 'Data protection lawyer', waitsOn: 'External counsel', blocks: 'Phase 2 exit, Phase 4 launch' },
+  { code: 'P2', name: 'Theta legacy data audit', waitsOn: 'Internal audit', blocks: 'Phase 2 import' },
+  { code: 'P3', name: 'Meta business verification', waitsOn: 'Meta approval', blocks: 'Phase 4 entirely' },
+  { code: 'P4', name: 'BD partnership outreach', waitsOn: 'Continuous', blocks: 'Phase 2 data volume' },
 ]
 
+// 🔴 These numbers are `agri-crm-docs/15-execution-plan.md`, and nothing else.
+//
+// This list previously carried an invented "Auth & environment safety" at
+// position 1, which pushed every later phase up by one and dropped "Scale &
+// harden" off the end entirely. The result contradicted the app itself: the
+// Pipeline screen labels itself Phase 3 from the execution plan, while this
+// list showed Commercial as Phase 4 — so the same feature had two numbers on
+// two screens, and the registry work actually in progress looked like it had
+// not started.
+//
+// Auth and the environment guards were never a phase. They were built inside
+// Phase 0 and hardened continuously since, which is why the plan has no gate
+// for them.
 const PHASES = [
   { n: 0, name: 'Foundation', state: 'done' },
-  { n: 1, name: 'Auth & environment safety', state: 'done' },
-  { n: 2, name: 'Organisation registry', state: 'next' },
-  { n: 3, name: 'Farmer core & consent', state: 'todo' },
-  { n: 4, name: 'Commercial modules', state: 'todo' },
-  { n: 5, name: 'Engagement engine', state: 'todo' },
-  { n: 6, name: 'Data intelligence', state: 'todo' },
-  { n: 7, name: 'Field mobile app', state: 'todo' },
+  { n: 1, name: 'Organisation registry', state: 'doing' },
+  { n: 2, name: 'Farmer core & consent', state: 'todo' },
+  { n: 3, name: 'Commercial modules', state: 'todo' },
+  { n: 4, name: 'Engagement engine', state: 'todo' },
+  { n: 5, name: 'Data intelligence', state: 'todo' },
+  { n: 6, name: 'Field mobile app', state: 'todo' },
+  { n: 7, name: 'Scale & harden', state: 'todo' },
 ] as const
 
 export function DashboardPage() {
@@ -418,7 +436,7 @@ function BuildStatus() {
           <div>
             <CardTitle>Build phases</CardTitle>
             <CardDescription>
-              A phase ends when its exit gate passes, not when its weeks run out.
+              A phase ends when its exit gate passes, not when someone decides it is done.
             </CardDescription>
           </div>
         </CardHeader>
@@ -430,7 +448,7 @@ function BuildStatus() {
                   className={`size-1.5 shrink-0 rounded-full ${
                     phase.state === 'done'
                       ? 'bg-brand'
-                      : phase.state === 'next'
+                      : phase.state === 'doing'
                         ? 'bg-bronze'
                         : 'bg-line-strong'
                   }`}
@@ -439,9 +457,9 @@ function BuildStatus() {
                 <span className={phase.state === 'todo' ? 'text-ink-3' : 'text-ink'}>
                   {phase.name}
                 </span>
-                {phase.state === 'next' && (
+                {phase.state === 'doing' && (
                   <Badge variant="bronze" className="ml-auto">
-                    Next
+                    In progress
                   </Badge>
                 )}
               </li>
@@ -466,7 +484,7 @@ function BuildStatus() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-5">Workstream</TableHead>
-                <TableHead>Lead time</TableHead>
+                <TableHead>Waits on</TableHead>
                 <TableHead className="pr-5">Blocks</TableHead>
               </TableRow>
             </TableHeader>
@@ -477,7 +495,7 @@ function BuildStatus() {
                     <span className="font-mono text-sm text-ink-3">{track.code}</span>{' '}
                     {track.name}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-ink-2">{track.leadTime}</TableCell>
+                  <TableCell className="whitespace-nowrap text-ink-2">{track.waitsOn}</TableCell>
                   <TableCell className="pr-5 font-sans text-ink-2">{track.blocks}</TableCell>
                 </TableRow>
               ))}

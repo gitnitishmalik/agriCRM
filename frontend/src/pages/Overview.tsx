@@ -19,19 +19,17 @@ import { PageHeader } from '../layout/AppShell'
 export function NotBuiltYet({
   title,
   phase,
-  weeks,
   holds,
   blockedBy,
 }: {
   title: string
   phase: string
-  weeks: string
   holds: string
   blockedBy?: string
 }) {
   return (
     <>
-      <PageHeader eyebrow={`${phase} · weeks ${weeks}`} title={title} />
+      <PageHeader eyebrow={phase} title={title} />
       <div className="p-6">
         <div className="card max-w-2xl p-6">
           <h2 className="text-base font-medium text-ink">Not built yet</h2>

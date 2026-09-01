@@ -402,8 +402,8 @@ validation *and* the OpenAPI contract the frontend generates from (no
 and no second auth stack — `python-jose` + `pyotp` replaced simplejwt +
 django-otp + axes, and the rate limiting axes provided is a middleware.
 
-**What it cost, honestly:** ~6-8 weeks, which is roughly what Doc 03 predicted
-when it listed FastAPI as the rejected second choice. Four bugs shipped that
+**What it cost, honestly:** a substantial and unbudgeted detour, roughly what
+Doc 03 predicted when it listed FastAPI as the rejected second choice. Four bugs shipped that
 every test passed and a browser caught — the trailing-slash 307, three
 templates still carrying Django syntax, a preview endpoint stricter than the
 form it served, and a missing optional package silently changing behaviour.
@@ -489,21 +489,26 @@ only. It is not in git, is not a fallback, and nothing may import from it.
 
 ## Build phases
 
-Full detail in `agri-crm-docs/15-execution-plan.md`. A phase ends when its **exit gate** passes, not when its weeks run out.
+Full detail in `agri-crm-docs/15-execution-plan.md`. A phase ends when its **exit gate** passes, not when someone decides it is done.
 
-| Phase | Weeks | Deliverable |
-|---|---|---|
-| **Track P** | 1 → ongoing | 🔴 Lawyer · Theta legacy audit · Meta verification · BD partnership outreach |
-| 0 · Foundation | 1–3 | Repo, CI, Terraform, schema applied, smoke test green |
-| 1 · Org Registry | 4–9 | FPO + ACS + mill registry with **real data**, bulk import, collectors |
-| 2 · Farmer Core | 10–15 | Farmer master, land, consent ledger, Theta import at audited tiers |
-| 3 · Commercial | 16–22 | Project Registry, BD Tracker, Agent Tracker, **RLS tested** |
-| 4 · Engagement | 23–29 | WhatsApp + Email, templates, campaigns, opt-out |
-| 5 · Intelligence | 30–36 | Quality scoring, dedupe, **satellite cross-check** |
-| 6 · Field App | 37–44 | Offline React Native app for agents |
-| 7 · Scale & harden | 45–52 | Partitioning automation, pen test, DR drill, load test |
+🔴 **No phase carries a duration, deliberately.** An estimate beside a task is
+read as a commitment, and the commitment then decides when the phase ends
+instead of the gate doing it. The order below is the contract; how long each
+takes is whatever it takes.
 
-🔴 **Track P starts week 1 regardless of engineering phase.** All four have multi-week external lead times and each blocks a later phase.
+| Phase | Deliverable |
+|---|---|
+| **Track P** | 🔴 Lawyer · Theta legacy audit · Meta verification · BD partnership outreach |
+| 0 · Foundation | Repo, CI, Terraform, schema applied, smoke test green |
+| 1 · Org Registry | FPO + ACS + mill registry with **real data**, bulk import, collectors |
+| 2 · Farmer Core | Farmer master, land, consent ledger, Theta import at audited tiers |
+| 3 · Commercial | Project Registry, BD Tracker, Agent Tracker, **RLS tested** |
+| 4 · Engagement | WhatsApp + Email, templates, campaigns, opt-out |
+| 5 · Intelligence | Quality scoring, dedupe, **satellite cross-check** |
+| 6 · Field App | Offline React Native app for agents |
+| 7 · Scale & harden | Partitioning automation, pen test, DR drill, load test |
+
+🔴 **Track P starts immediately regardless of engineering phase.** All four wait on somebody outside the team and each blocks a later phase.
 
 ---
 
@@ -543,7 +548,7 @@ Targets at 12 months: Gold 15–25% · Silver 40–50% · Bronze 25–35% · Qua
 | 10 | `10-communication-whatsapp-email.md` | Consent architecture, WhatsApp, SES, campaigns |
 | 11 | `11-api-spec.md` | REST contract for every resource |
 | 12 | `12-security-rbac.md` | Roles, RLS, masking, audit, retention, incident response |
-| 13 | `13-roadmap-and-phases.md` | 52-week roadmap, team, risks |
+| 13 | `13-roadmap-and-phases.md` | Phase order, team, risks |
 | 14 | `14-cost-estimate.md` | Infra + messaging + people, monthly and annual |
 | 15 | `15-execution-plan.md` | **Phase-by-phase tasks, preconditions and exit gates** |
 

@@ -14,23 +14,58 @@ merely stopped. See [Why FastAPI](#why-fastapi).
 
 ## Quick start
 
-Requires Docker, Python 3.13, and Git Bash (on Windows).
+Requires **Docker**, **Python 3.13**, **Node 22+**, and **GNU make** run from
+**Git Bash** on Windows (the Makefile needs a POSIX shell and the
+`scripts/*.sh`; PowerShell and `cmd` will not do). If MinGW gave you
+`mingw32-make` but no `make`, copy it: `cp /c/MinGW/bin/mingw32-make.exe
+/c/MinGW/bin/make.exe`.
 
 ```bash
-make bootstrap     # containers, schema, venv, deps, smoke test
-make run           # API on :8001
+make bootstrap     # containers, .env, venv, deps, schema, smoke test, frontend
+make dev           # API on :8001 and the UI on :5173, together
 ```
+
+`make dev` runs both and stops both on one Ctrl-C. `make run` and
+`make frontend` run them separately if you want two terminals.
 
 Then:
 
 | URL | What |
 |---|---|
+| http://localhost:5173 | The React UI |
 | http://localhost:8001/admin | The data-operations console — server-rendered, read-heavy |
 | http://localhost:8001/api/docs | Swagger UI (OpenAPI 3.1) |
 | http://localhost:8001/api/v1/healthz | Liveness probe |
 
-`make superuser` creates an admin login. MFA is mandatory for the privileged
-roles (Doc 12 §1), so expect a TOTP enrolment on first sign-in.
+`make superuser` creates an admin login; `make seed-dev-users` creates one
+account per role for development and refuses unless `DEBUG` is on. MFA is
+mandatory for the privileged roles (Doc 12 §1), so expect a TOTP enrolment on
+first sign-in.
+
+### When something will not start
+
+```bash
+make doctor
+```
+
+Read-only. It checks the Python version, the packages, `.env`, whether the
+database is reachable and holds all six schemas, whether the suite is pointed
+at a local database, and whether Node, Docker, `psql` and WeasyPrint are
+present — and prints the one command that fixes each thing it finds. It never
+changes anything.
+
+### Known gaps on a fresh install
+
+Neither stops the app, and `make doctor` reports both:
+
+- **No geography.** `ref.district`, `ref.block` and `ref.village` ship empty,
+  so district and village lookups return nothing. The LGD load is Phase 1 work
+  — see `agri-crm-docs/15-execution-plan.md`. 🔴 The codes are not invented in
+  the meantime: a wrong LGD code silently corrupts every join made on it.
+- **PDF rendering needs native libraries.** WeasyPrint imports and then raises
+  `OSError` without the GTK runtime on Windows, or libpango elsewhere. Invoice
+  HTML, the preview and the console are unaffected; only the PDF download
+  needs it.
 
 ### Ports
 
@@ -44,11 +79,14 @@ producing an auth failure that reads like a bad password.
 
 ```bash
 make help          # list everything
+make doctor        # check the environment, report what is missing
+make dev           # API and UI together
 make check         # lint + compliance guards + tests + smoke — what CI runs
 make smoke         # the 20-assertion schema suite
 make db-migrate    # apply the idempotent additions — safe on a live database
 make db-reset      # 🔴 drop and re-apply the business schema (dev only)
 make test          # runs backend/tests via backend/pytest.ini
+make test-frontend # frontend typecheck + unit tests
 make fmt           # auto-format
 make schema-doc    # regenerate openapi.yaml
 make collector ARGS="--dry-run --limit 5"

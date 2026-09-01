@@ -236,4 +236,4 @@ Ship a **template XLSX** per entity type with the expected columns, an example r
 | 9 | Map view, command-area layer |
 | 10 | Quality tiers, completeness scoring, DQ tab |
 
-Ten sprints ≈ 20 weeks with one full-time engineer, or 10–12 weeks with two. The server-rendered `/admin` console makes sprints 2–6 usable by your data-ops team **before** the React UI exists — start loading real data in week 4, not week 20.
+Ten sprints, sequenced. The server-rendered `/admin` console makes sprints 2–6 usable by your data-ops team **before** the React UI exists — start loading real data as soon as the registry accepts it, not once the whole module is finished.

@@ -63,7 +63,7 @@
 
 | Original claim | What happened |
 |---|---|
-| Django Admin is a working data-ops console on day one, worth ~3 months of frontend work | **True, and it was the right call for Phase 0.** It was replaced by `/admin` — server-rendered over the same domain layer, read-heavy and write-narrow. Critically it *cannot* issue an invoice, cancel one or record a payment, and a test reads the source to prove those paths do not exist. Django Admin's generic CRUD could not make that promise, and on a system with financial records that promise turned out to matter more than the free screens. |
+| Django Admin is a working data-ops console immediately, worth a substantial amount of frontend work | **True, and it was the right call for Phase 0.** It was replaced by `/admin` — server-rendered over the same domain layer, read-heavy and write-narrow. Critically it *cannot* issue an invoice, cancel one or record a payment, and a test reads the source to prove those paths do not exist. Django Admin's generic CRUD could not make that promise, and on a system with financial records that promise turned out to matter more than the free screens. |
 | Migrations are trustworthy; you will change this schema forty times in year one | **The premise was wrong, not the claim.** The business schema is owned by `sql/schema.sql` and always was — the partitioning, generated columns and triggers *are* the compliance controls and no ORM can express them. Django's migrations only ever managed Django's own auth and session tables. The forty schema changes were forty reviewed SQL files either way. |
 | Auth, permissions, RBAC, sessions, CSRF, password hashing, throttling — solved and not your problem | **Half true.** Password hashing was genuinely free, and its format is inherited verbatim (`api/security.py`) because the existing hashes are in it. The rest was three libraries — simplejwt, django-otp, axes — configured into a shape none of them defaulted to, because MFA-mandatory-by-role is not a thing any of them ship. That is now ~200 lines of `python-jose` + `pyotp` that does exactly the documented rule. |
 | Python matches Theta's data-science stack | **Still true, and unaffected.** Collectors, dedupe and the Phase 5 satellite cross-check are in the same language as the API. This was never an argument for Django specifically. |
@@ -80,7 +80,7 @@
   Pydantic types, and the tests assert properties of those types rather than
   properties of a model's behaviour.
 
-**What it cost:** roughly 6–8 weeks — which is what the row below predicted
+**What it cost:** a substantial and unbudgeted detour — which is what the row below predicted
 when FastAPI was the rejected alternative. The estimate was accurate. Four
 bugs shipped that the whole suite passed and a browser caught (a trailing
 slash 307 that stripped `Authorization`, three templates still holding Django
@@ -128,15 +128,15 @@ The field app is the highest-risk component, because rural connectivity is genui
 
 **WhatsApp: Meta Cloud API directly, not through a BSP.**
 
-At the volumes in [Doc 14](./14-cost-estimate.md), BSP markup (typically 15–30% on top of Meta's rate, or a per-seat platform fee) exceeds the cost of the two weeks of engineering it takes to integrate the Cloud API directly. You need: template management, a send endpoint, and a webhook receiver. That is it.
+At the volumes in [Doc 14](./14-cost-estimate.md), BSP markup (typically 15–30% on top of Meta's rate, or a per-seat platform fee) exceeds the cost of the engineering it takes to integrate the Cloud API directly. You need: template management, a send endpoint, and a webhook receiver. That is it.
 
 Effective 1 July 2026, Meta's India per-message rates are approximately **₹0.8631 for marketing** and **₹0.115 for utility and authentication**. From 1 October 2026, service messages and in-window utility templates become billable at the utility rate rather than free. Your traffic should be overwhelmingly **utility** category — advisories, payment schedules, meeting notices — which is 7.5× cheaper than marketing and, not coincidentally, far less likely to get you blocked.
 
 *Use a BSP (AiSensy, Gupshup, Interakt, WATI) only if* you need a shared team inbox with agent assignment on day one, or you have no backend capacity for the webhook work. It is a reasonable v1 shortcut; plan to migrate.
 
-**Email: Amazon SES.** ~₹0.008/email at Indian volumes, in-region (ap-south-1), with SNS-delivered bounce and complaint notifications you must write back to `comm.suppression`. Configure SPF, DKIM and DMARC before your first send, and warm the sending domain over 3–4 weeks. Alternatives: Postmark (better deliverability, ~8× the cost — worth it for transactional only), Brevo/Zoho Campaigns (fine, but adds a data-residency question).
+**Email: Amazon SES.** ~₹0.008/email at Indian volumes, in-region (ap-south-1), with SNS-delivered bounce and complaint notifications you must write back to `comm.suppression`. Configure SPF, DKIM and DMARC before your first send, and warm the sending domain gradually before sending at volume. Alternatives: Postmark (better deliverability, ~8× the cost — worth it for transactional only), Brevo/Zoho Campaigns (fine, but adds a data-residency question).
 
-**SMS:** deferred to v2. India's TRAI DLT regime requires registering your entity, your sender IDs and every template content template before you can send. It is real work with a 2–4 week lead time. Do it when you need it, not before. 🔴 SMS to numbers on the TRAI DND registry without valid consent carries regulatory penalties independent of DPDP.
+**SMS:** deferred to v2. India's TRAI DLT regime requires registering your entity, your sender IDs and every template content template before you can send. It is real work with an external lead time you do not control. Do it when you need it, not before. 🔴 SMS to numbers on the TRAI DND registry without valid consent carries regulatory penalties independent of DPDP.
 
 ## 7. Infrastructure
 
@@ -238,11 +238,11 @@ holds and is allowed to have no router at all.
 
 ## 11. The build-vs-buy call, stated plainly
 
-Building this custom costs roughly 9–12 months of one to three engineers. Configuring Odoo or Zoho CRM costs roughly 2–3 months.
+Building this custom costs several times what configuring Odoo or Zoho CRM costs.
 
 **Build custom if:** the farmer/FPO/mill relationship graph and the data-quality/provenance layer are the product — i.e. if the database itself is an asset you intend to monetise or that materially differentiates Theta Analytics. Based on what you've described, it is.
 
-**Buy and configure if:** you need something running in eight weeks and the CRM is purely internal sales hygiene, with the data asset built separately.
+**Buy and configure if:** you need something running as fast as possible and the CRM is purely internal sales hygiene, with the data asset built separately.
 
 **The hybrid worth considering — and what it actually looked like:** ship a
 server-rendered admin console as the entire v1 UI. It is genuinely usable for

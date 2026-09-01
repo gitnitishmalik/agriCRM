@@ -71,26 +71,30 @@ You asked to scrape every farmer in India — name, phone, email, address, land 
 
 Doc 05 turns this into a source-by-source catalogue with a legal basis and a collection method for each. The rest of the system is designed on the assumption that you follow it.
 
-## What "good" looks like at the end of 12 months
+## What "good" looks like once the sequence is complete
 
 - 35,000 FPOs and 530 mills in the registry, ~8,000 of them with a verified named decision-maker and a working phone number
-- 400,000–800,000 farmers with recorded consent and known provenance, growing 40k/month through partnerships and field capture
+- 400,000–800,000 farmers with recorded consent and known provenance, growing steadily through partnerships and field capture
 - Every BD conversation in the country logged against an organisation, not a person's phone
 - WhatsApp quality rating held at **Green**, opt-out under 0.5%
 - A data asset a buyer can audit
 
 ## Build sequence
 
-| Phase | Weeks | Deliverable |
-|---|---|---|
-| 0 · Foundation | 1–3 | Repo, CI, Postgres schema, auth, data-ops console |
-| 1 · Org Registry | 4–9 | FPO + ACS + Mill registry, people, bulk import, search |
-| 2 · Farmer Core | 10–15 | Farmer master, land, consent ledger, Theta import |
-| 3 · Commercial | 16–22 | Project Registry, BD Tracker, Agent Tracker |
-| 4 · Engagement | 23–29 | WhatsApp + Email, templates, campaigns, opt-out |
-| 5 · Intelligence | 30–36 | Quality scoring, dedupe/entity resolution, dashboards |
-| 6 · Field App | 37–44 | Offline React Native app for agents |
-| 7 · Scale & harden | 45–52 | Partitioning, OpenSearch, SOC-style audit, DR |
+A phase ends when its exit gate passes, not on a date. No phase carries a
+duration: an estimate here would be read as a commitment, and the commitment
+would then decide when a phase ends instead of the gate doing it.
+
+| Phase | Deliverable |
+|---|---|
+| 0 · Foundation | Repo, CI, Postgres schema, auth, data-ops console |
+| 1 · Org Registry | FPO + ACS + Mill registry, people, bulk import, search |
+| 2 · Farmer Core | Farmer master, land, consent ledger, Theta import |
+| 3 · Commercial | Project Registry, BD Tracker, Agent Tracker |
+| 4 · Engagement | WhatsApp + Email, templates, campaigns, opt-out |
+| 5 · Intelligence | Quality scoring, dedupe/entity resolution, dashboards |
+| 6 · Field App | Offline React Native app for agents |
+| 7 · Scale & harden | Partitioning, OpenSearch, SOC-style audit, DR |
 
 Detail in [Doc 13](./13-roadmap-and-phases.md).
 

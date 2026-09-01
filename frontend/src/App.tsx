@@ -110,7 +110,6 @@ export default function App() {
             <NotBuiltYet
               title="Pipeline"
               phase="Phase 3"
-              weeks="16–22"
               holds="Leads, opportunities and projects, with stage-ageing alerts and a forecast produced from the system rather than a spreadsheet."
             />
           }
@@ -121,9 +120,8 @@ export default function App() {
             <NotBuiltYet
               title="Campaigns"
               phase="Phase 4"
-              weeks="23–29"
               holds="WhatsApp and email, with the exclusion breakdown shown before every send and consent re-checked at dispatch."
-              blockedBy="Meta business verification (Track P3), which takes one to three weeks and can stall on documentation."
+              blockedBy="Meta business verification (Track P3), which is an external review and can stall on documentation."
             />
           }
         />
@@ -133,7 +131,6 @@ export default function App() {
             <NotBuiltYet
               title="Data health"
               phase="Phase 5"
-              weeks="30–36"
               holds="Tier distribution over time, the source scorecard, the contradiction queue, and the satellite cross-check that turns Theta's existing analytics into a verification loop."
             />
           }
